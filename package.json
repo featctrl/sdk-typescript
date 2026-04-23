@@ -1,0 +1,17 @@
+{
+  "name": "@featctrl/typescript",
+  "version": "0.1.0",
+  "description": "FeatCtrl TypeScript SDK — SSE client for Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.0"
+  },
+  "engines": { "node": ">=18" }
+}
