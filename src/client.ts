@@ -154,6 +154,13 @@ export class SseClient {
         }
       }
     } catch {
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore reader cancellation failures during reconnect cleanup.
+      }
+      this.abortController?.abort();
+      this.abortController = null;
       if (this.disconnecting) return;
       this._scheduleReconnect();
     }
