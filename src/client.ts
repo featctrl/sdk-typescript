@@ -191,7 +191,6 @@ export class SseClient {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private _handleEvent(type: string, data: string): void {
-    console.log('[FeatCtrl] Event received:', type);
     switch (type) {
       case 'connection.established': {
         const parsed = JSON.parse(data) as { connection_uuid: string; instance_uuid: string };
