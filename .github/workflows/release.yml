@@ -19,8 +19,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Full history needed for merging; use a PAT so push/PR events
-          # trigger downstream workflows (GITHUB_TOKEN pushes are skipped by default)
+          # Full history needed for merging; use the default GITHUB_TOKEN.
+          # Note: pushes made with GITHUB_TOKEN do not trigger downstream workflows by default.
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
