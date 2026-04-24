@@ -1,0 +1,56 @@
+version: "1.0"
+last_updated: "2026-04-14"
+
+test_suites:
+  # ── TypeScript SDK (6 tests) ──
+  - name: TypeScript SDK — SSE Connection
+    manual_doc: tests/manual/01_sse_connection.md
+    auto_file: tests/integration/client_tests.ts
+    test_cases:
+      - id: TSSDK-001
+        title: "SSE connection established"
+        manual_section: "## Test Case: TSSDK-001"
+        auto_function: test_tssdk_001_connection_established
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P0
+
+      - id: TSSDK-002
+        title: "Flags snapshot received and store populated"
+        manual_section: "## Test Case: TSSDK-002"
+        auto_function: test_tssdk_002_flags_snapshot_populates_store
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P0
+
+      - id: TSSDK-003
+        title: "FlagStore.isEnabled returns false for unknown key"
+        manual_section: "## Test Case: TSSDK-003"
+        auto_function: test_tssdk_003_is_enabled_unknown_key
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P1
+
+      - id: TSSDK-004
+        title: "FlagStore.getConfig returns null for unknown key"
+        manual_section: "## Test Case: TSSDK-004"
+        auto_function: test_tssdk_004_get_config_unknown_key
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P1
+
+      - id: TSSDK-005
+        title: "FlagStore.applyChange upserts a flag"
+        manual_section: "## Test Case: TSSDK-005"
+        auto_function: test_tssdk_005_apply_change
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P1
+
+      - id: TSSDK-006
+        title: "FlagStore.applyDelete removes a flag"
+        manual_section: "## Test Case: TSSDK-006"
+        auto_function: test_tssdk_006_apply_delete
+        status: synced
+        last_verified: "2026-04-14"
+        priority: P1
