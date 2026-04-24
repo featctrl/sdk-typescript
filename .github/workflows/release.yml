@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Full history needed for merging; use a PAT so push/PR events
           # trigger downstream workflows (GITHUB_TOKEN pushes are skipped by default)
@@ -24,9 +24,9 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
