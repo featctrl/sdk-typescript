@@ -1,5 +1,8 @@
 # @featctrl/typescript
 
+[![CI](https://github.com/featctrl/sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/featctrl/sdk-typescript/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@featctrl/typescript)](https://www.npmjs.com/package/@featctrl/typescript)
+
 Based on the common specifications [FeatCtrl SDK Specifications](https://github.com/featctrl/sdk-spec/).
 
 Server-side TypeScript SDK for [FeatCtrl](https://www.featctrl.com) — feature flag management.

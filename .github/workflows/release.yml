@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: write   # create tags, releases and merge PRs
+  id-token: write   # OIDC token for npm Trusted Publishing
+
+jobs:
+  release:
+    name: Tag, Merge & Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history needed for merging; use a PAT so push/PR events
+          # trigger downstream workflows (GITHUB_TOKEN pushes are skipped by default)
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Read version from package.json
+        id: pkg
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Guard — fail if tag already exists
+        run: |
+          TAG="v${{ steps.pkg.outputs.version }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "::error::Tag ${TAG} already exists on remote. Bump the version in package.json first."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Build
+        run: npm run build
+
+      - name: Create and push Git tag
+        run: |
+          TAG="v${{ steps.pkg.outputs.version }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Merge release branch into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          # Create the PR (will succeed even if it already exists)
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Release ${{ steps.pkg.outputs.version }}" \
+            --body "Automated release PR for version ${{ steps.pkg.outputs.version }}." \
+            || true
+          gh pr merge "$BRANCH" --squash --auto --delete-branch
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.pkg.outputs.version }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Publish to npm (Trusted Publishing — OIDC)
+        run: npm publish --provenance --access public
+
