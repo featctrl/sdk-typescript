@@ -1,8 +1,8 @@
-# Manual Tests — SSE Connection (`@featctrl/typescript-sdk`)
+# Manual Tests — SSE Connection (`@featctrl/typescript`)
 
 ## Overview
 
-This document covers manual test procedures for the `@featctrl/typescript-sdk` package.
+This document covers manual test procedures for the `@featctrl/typescript` package.
 Each test case verifies a specific aspect of the SSE connection lifecycle between the
 TypeScript SDK and the FeatCtrl backend.
 
