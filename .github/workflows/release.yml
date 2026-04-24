@@ -6,8 +6,9 @@ on:
       - 'release/**'
 
 permissions:
-  contents: write   # create tags, releases and merge PRs
-  id-token: write   # OIDC token for npm Trusted Publishing
+  contents: write       # create tags, releases and merge PRs
+  id-token: write       # OIDC token for npm Trusted Publishing
+  pull-requests: write  # create and merge the release PR
 
 jobs:
   release:
