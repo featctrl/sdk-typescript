@@ -73,6 +73,7 @@ jobs:
             echo "No commits between main and $BRANCH — skipping merge."
             exit 0
           fi
+          # Create the PR (will succeed even if it already exists)
           gh pr create \
             --base main \
             --head "$BRANCH" \
