@@ -159,10 +159,10 @@ allowing the server to release the connection slot immediately.
 ### Test Steps
 
 1. Open an SSE connection and note `connection_uuid` + `instance_uuid`.
-2. Manually POST to `/disconnect`:
+2. Manually DELETE to `/disconnect`:
 
 ```bash
-curl -X POST \
+curl -X DELETE \
   "http://localhost:8082/disconnect?connection_uuid=<conn_uuid>&instance_uuid=<inst_uuid>"
 ```
 
@@ -174,7 +174,7 @@ curl -X POST \
 
 ### Pass/Fail Criteria
 
-- [ ] POST `/disconnect` returns 2xx
+- [ ] DELETE `/disconnect` returns 2xx
 - [ ] Existing SSE stream terminates (curl exits)
 
 ---
