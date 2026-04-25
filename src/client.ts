@@ -23,6 +23,7 @@ export class SseClient {
   private readonly sdkKey: string;
 
   private abortController: AbortController | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectionUuid: string | null = null;
   private instanceUuid: string | null = null;
   private backoffMs = INITIAL_BACKOFF_MS;
@@ -83,6 +84,12 @@ export class SseClient {
    */
   async connect(previousUuid?: string): Promise<void> {
     this.disconnecting = false;
+
+    // Cancel any pending reconnect timer before opening a new connection.
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     const url = new URL(`${this.sdkApiUrl}/sse`);
     url.searchParams.set('sdk_key', this.sdkKey);
@@ -169,6 +176,13 @@ export class SseClient {
   /** Gracefully disconnect from the FeatCtrl backend and notify the server. */
   disconnect(): void {
     this.disconnecting = true;
+
+    // Cancel any pending reconnect timer.
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     this._disconnectedListeners.forEach((fn) => fn());
 
     const connUuid = this.connectionUuid;
@@ -252,7 +266,8 @@ export class SseClient {
   private _scheduleReconnect(): void {
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.disconnecting) {
         this.connect().catch(() => undefined);
       }

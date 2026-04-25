@@ -1,10 +1,10 @@
 /**
- * Integration tests for @featctrl/typescript-sdk — SseClient + FlagStore.
+ * Integration tests for @featctrl/typescript — SseClient + FlagStore.
  *
  * These tests require a running FeatCtrl backend instance and are skipped by default.
  * Run them explicitly with:
  *
- *   npx ts-node --test tests/integration/client_tests.ts
+ *   node --import tsx/esm --test tests/integration/client_tests.ts
  *
  * or with a test runner that supports the `#[ignore]`-equivalent opt-in flag.
  *
