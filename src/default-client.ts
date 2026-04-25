@@ -1,5 +1,6 @@
 import { SseClient } from './client.js';
 import { FlagStore } from './store.js';
+import type { FeatCtrlClient, FeatCtrlFlagStore } from './types.js';
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
 
@@ -53,10 +54,10 @@ export function createDefaultClient(
 const { flagStore: _flagStore, sseClient: _sseClient } = createDefaultClient();
 
 /** Shared in-memory flag store, kept up to date automatically when FEATCTRL_SDK_KEY is set. */
-export const flagStore: FlagStore = _flagStore;
+export const flagStore: FeatCtrlFlagStore = _flagStore;
 
 /**
  * SSE client started automatically when FEATCTRL_SDK_KEY is available.
  * It is `null` when the SDK key is not configured.
  */
-export const sseClient: SseClient | null = _sseClient;
+export const sseClient: FeatCtrlClient | null = _sseClient;
