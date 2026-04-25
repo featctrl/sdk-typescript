@@ -3,6 +3,8 @@ import { FlagStore } from './store.js';
 import type { FeatCtrlClient, FeatCtrlFlagStore } from './types.js';
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
+const VALID_MODES = ['livestreaming', 'snapshot'] as const;
+type ConnectionMode = (typeof VALID_MODES)[number];
 
 export type RuntimeEnv = Record<string, string | undefined>;
 
@@ -25,6 +27,19 @@ export function createDefaultClient(
   const sdkKey = env.FEATCTRL_SDK_KEY?.trim();
   const sdkApiUrl = env.FEATCTRL_URL?.trim() || DEFAULT_SDK_API_URL;
 
+  const rawMode = env.FEATCTRL_MODE?.trim();
+  let mode: ConnectionMode = 'livestreaming';
+  if (rawMode !== undefined) {
+    if ((VALID_MODES as readonly string[]).includes(rawMode)) {
+      mode = rawMode as ConnectionMode;
+    } else {
+      console.warn(
+        `[FeatCtrl] Invalid FEATCTRL_MODE value "${rawMode}". Valid values are: ${VALID_MODES.join(', ')}. Falling back to "livestreaming".`,
+      );
+    }
+  }
+  console.log(`[FeatCtrl] Running in ${mode} mode.`);
+
   const flagStore = new FlagStore();
 
   if (!sdkKey) {
@@ -36,11 +51,14 @@ export function createDefaultClient(
     return { flagStore, sseClient: null };
   }
 
-  const sseClient = new SseClient({ sdkApiUrl, sdkKey });
-  sseClient
-    .onSnapshot((flags) => flagStore.setSnapshot(flags))
-    .onFlagChanged((flag) => flagStore.applyChange(flag))
-    .onFlagDeleted((key) => flagStore.applyDelete(key));
+  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot' });
+  sseClient.onSnapshot((flags) => flagStore.setSnapshot(flags));
+
+  if (mode === 'livestreaming') {
+    sseClient
+      .onFlagChanged((flag) => flagStore.applyChange(flag))
+      .onFlagDeleted((key) => flagStore.applyDelete(key));
+  }
 
   if (autoConnect) {
     void sseClient.connect().catch(() => undefined);

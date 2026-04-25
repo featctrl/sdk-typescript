@@ -5,6 +5,12 @@ interface SseClientConfig {
   /** Base URL of the FeatCtrl backend. @default "https://sdk.featctrl.com" */
   sdkApiUrl?: string;
   sdkKey: string;
+  /**
+   * When `true`, the client disconnects automatically after receiving the first
+   * `flags.snapshot` event and does not reconnect. Suitable for short-lived
+   * processes or batch jobs. @default false
+   */
+  snapshotMode?: boolean;
 }
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
@@ -23,6 +29,7 @@ export class SseClient {
   private readonly sdkApiUrl: string;
   private readonly sdkKey: string;
   private readonly _watchdogSecs: number;
+  private readonly _snapshotMode: boolean;
 
   private abortController: AbortController | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,6 +51,7 @@ export class SseClient {
   constructor(config: SseClientConfig) {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
     this.sdkKey = config.sdkKey;
+    this._snapshotMode = config.snapshotMode ?? false;
 
     const raw = process.env['FEATCTRL_HEARTBEAT_WATCHDOG_SECS'];
     if (raw !== undefined) {
@@ -202,6 +210,7 @@ export class SseClient {
 
   /** Gracefully disconnect from the FeatCtrl backend and notify the server. */
   disconnect(): void {
+    if (this.disconnecting) return;
     this.disconnecting = true;
 
     // Cancel any pending reconnect timer.
@@ -247,6 +256,9 @@ export class SseClient {
         const parsed = JSON.parse(data) as { flags: FeatCtrlFlag[] };
         const map = new Map<string, FeatCtrlFlag>(parsed.flags.map((f) => [f.key, f]));
         this._snapshotListeners.forEach((fn) => fn(map));
+        if (this._snapshotMode) {
+          this.disconnect();
+        }
         break;
       }
 
