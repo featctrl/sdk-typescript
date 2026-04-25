@@ -19,6 +19,7 @@ export interface FeatCtrlClient {
   onSnapshot(fn: (flags: Map<string, FeatCtrlFlag>) => void): FeatCtrlClient;
   onFlagChanged(fn: (flag: FeatCtrlFlag) => void): FeatCtrlClient;
   onFlagDeleted(fn: (key: string) => void): FeatCtrlClient;
+  onWatchdogTimeout(fn: () => void): FeatCtrlClient;
   disconnect(): void;
 }
 

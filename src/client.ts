@@ -10,6 +10,7 @@ interface SseClientConfig {
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
 const INITIAL_BACKOFF_MS = 3_000;
 const MAX_BACKOFF_MS = 30_000;
+const DEFAULT_HEARTBEAT_WATCHDOG_SECS = 120;
 
 /**
  * SSE client for Node.js 18+.
@@ -21,9 +22,11 @@ const MAX_BACKOFF_MS = 30_000;
 export class SseClient {
   private readonly sdkApiUrl: string;
   private readonly sdkKey: string;
+  private readonly _watchdogSecs: number;
 
   private abortController: AbortController | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private connectionUuid: string | null = null;
   private instanceUuid: string | null = null;
   private backoffMs = INITIAL_BACKOFF_MS;
@@ -31,15 +34,31 @@ export class SseClient {
 
   // ── Listener registries ───────────────────────────────────────────────────
 
-  private _connectedListeners:    Array<(connUuid: string, instUuid: string) => void> = [];
-  private _disconnectedListeners: Array<() => void> = [];
-  private _snapshotListeners:     Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
-  private _flagChangedListeners:  Array<(flag: FeatCtrlFlag) => void> = [];
-  private _flagDeletedListeners:  Array<(key: string) => void> = [];
+  private _connectedListeners:         Array<(connUuid: string, instUuid: string) => void> = [];
+  private _disconnectedListeners:      Array<() => void> = [];
+  private _snapshotListeners:          Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
+  private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
+  private _flagDeletedListeners:       Array<(key: string) => void> = [];
+  private _watchdogTimeoutListeners:   Array<() => void> = [];
 
   constructor(config: SseClientConfig) {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
     this.sdkKey = config.sdkKey;
+
+    const raw = process.env['FEATCTRL_HEARTBEAT_WATCHDOG_SECS'];
+    if (raw !== undefined) {
+      const parsed = parseInt(raw, 10);
+      if (isNaN(parsed) || parsed <= 0) {
+        console.warn(
+          `[FeatCtrl] Invalid FEATCTRL_HEARTBEAT_WATCHDOG_SECS value "${raw}", using default: ${DEFAULT_HEARTBEAT_WATCHDOG_SECS}s`,
+        );
+        this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
+      } else {
+        this._watchdogSecs = parsed;
+      }
+    } else {
+      this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
+    }
   }
 
   // ── Public listener registration ─────────────────────────────────────────
@@ -71,6 +90,12 @@ export class SseClient {
   /** Register a listener called when a flag is deleted. Chainable. */
   onFlagDeleted(fn: (key: string) => void): this {
     this._flagDeletedListeners.push(fn);
+    return this;
+  }
+
+  /** Register a listener called when the heartbeat watchdog timer expires. Chainable. */
+  onWatchdogTimeout(fn: () => void): this {
+    this._watchdogTimeoutListeners.push(fn);
     return this;
   }
 
@@ -132,6 +157,7 @@ export class SseClient {
         const { done, value } = await reader.read();
 
         if (done) {
+          this._clearWatchdog();
           // Stream ended cleanly — reconnect unless we are shutting down.
           if (!this.disconnecting) {
             this.connect(this.connectionUuid ?? undefined).catch(() => undefined);
@@ -161,6 +187,7 @@ export class SseClient {
         }
       }
     } catch {
+      this._clearWatchdog();
       try {
         await reader.cancel();
       } catch {
@@ -183,6 +210,7 @@ export class SseClient {
       this.reconnectTimer = null;
     }
 
+    this._clearWatchdog();
     this._disconnectedListeners.forEach((fn) => fn());
 
     const connUuid = this.connectionUuid;
@@ -210,6 +238,7 @@ export class SseClient {
         const parsed = JSON.parse(data) as { connection_uuid: string; instance_uuid: string };
         this.connectionUuid = parsed.connection_uuid;
         this.instanceUuid = parsed.instance_uuid;
+        this._resetWatchdog();
         this._connectedListeners.forEach((fn) => fn(parsed.connection_uuid, parsed.instance_uuid));
         break;
       }
@@ -261,6 +290,7 @@ export class SseClient {
     if (!this.connectionUuid || !this.instanceUuid) return;
     const url = `${this.sdkApiUrl}/heartbeat?connection_uuid=${this.connectionUuid}&instance_uuid=${this.instanceUuid}`;
     fetch(url, { method: 'POST' }).catch(() => undefined);
+    this._resetWatchdog();
   }
 
   private _scheduleReconnect(): void {
@@ -272,5 +302,25 @@ export class SseClient {
         this.connect().catch(() => undefined);
       }
     }, delay);
+  }
+
+  private _clearWatchdog(): void {
+    if (this._watchdogTimer !== null) {
+      clearTimeout(this._watchdogTimer);
+      this._watchdogTimer = null;
+    }
+  }
+
+  private _resetWatchdog(): void {
+    this._clearWatchdog();
+    this._watchdogTimer = setTimeout(() => {
+      this._watchdogTimer = null;
+      if (this.disconnecting) return;
+      const savedUuid = this.connectionUuid;
+      this._watchdogTimeoutListeners.forEach((fn) => fn());
+      this.abortController?.abort();
+      this.abortController = null;
+      this.connect(savedUuid ?? undefined).catch(() => undefined);
+    }, this._watchdogSecs * 1_000);
   }
 }
