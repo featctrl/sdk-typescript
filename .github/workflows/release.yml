@@ -73,7 +73,7 @@ jobs:
           BRANCH="${GITHUB_REF#refs/heads/}"
           COMMITS=$(git rev-list --count origin/main..HEAD)
           if [ "$COMMITS" -eq 0 ]; then
-            echo "No commits between main and $BRANCH — skipping merge."
+            echo "No commits on $BRANCH ahead of main — skipping merge."
             exit 0
           fi
           # Create the PR (will succeed even if it already exists)
