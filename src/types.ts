@@ -20,6 +20,7 @@ export interface FeatCtrlClient {
   onFlagChanged(fn: (flag: FeatCtrlFlag) => void): FeatCtrlClient;
   onFlagDeleted(fn: (key: string) => void): FeatCtrlClient;
   onWatchdogTimeout(fn: () => void): FeatCtrlClient;
+  onForbidden(fn: () => void): FeatCtrlClient;
   disconnect(): void;
 }
 

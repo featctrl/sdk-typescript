@@ -38,6 +38,7 @@ export class SseClient {
   private instanceUuid: string | null = null;
   private backoffMs = INITIAL_BACKOFF_MS;
   private disconnecting = false;
+  private permanentlyStopped = false;
 
   // ── Listener registries ───────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ export class SseClient {
   private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
   private _flagDeletedListeners:       Array<(key: string) => void> = [];
   private _watchdogTimeoutListeners:   Array<() => void> = [];
+  private _forbiddenListeners:         Array<() => void> = [];
 
   constructor(config: SseClientConfig) {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
@@ -107,6 +109,16 @@ export class SseClient {
     return this;
   }
 
+  /**
+   * Register a listener called when the server returns 403 Forbidden.
+   * After this event, the client will never reconnect — default flag values
+   * are served indefinitely. Chainable.
+   */
+  onForbidden(fn: () => void): this {
+    this._forbiddenListeners.push(fn);
+    return this;
+  }
+
   // ── Connection lifecycle ──────────────────────────────────────────────────
 
   /**
@@ -145,6 +157,15 @@ export class SseClient {
     }
 
     if (!response.ok || !response.body) {
+      if (response.status === 403) {
+        console.warn(
+          '[FeatCtrl] Received 403 Forbidden — SDK key not recognized by the server. ' +
+          'Retries permanently disabled. Default flag values will be served indefinitely.',
+        );
+        this.permanentlyStopped = true;
+        this._forbiddenListeners.forEach((fn) => fn());
+        return;
+      }
       console.log('[FeatCtrl] Bad response:', response.status, response.statusText);
       if (this.disconnecting) return;
       this._scheduleReconnect();
@@ -167,7 +188,7 @@ export class SseClient {
         if (done) {
           this._clearWatchdog();
           // Stream ended cleanly — reconnect unless we are shutting down.
-          if (!this.disconnecting) {
+          if (!this.disconnecting && !this.permanentlyStopped) {
             this.connect(this.connectionUuid ?? undefined).catch(() => undefined);
           }
           break;
@@ -203,14 +224,14 @@ export class SseClient {
       }
       this.abortController?.abort();
       this.abortController = null;
-      if (this.disconnecting) return;
+      if (this.disconnecting || this.permanentlyStopped) return;
       this._scheduleReconnect();
     }
   }
 
   /** Gracefully disconnect from the FeatCtrl backend and notify the server. */
   disconnect(): void {
-    if (this.disconnecting) return;
+    if (this.disconnecting || this.permanentlyStopped) return;
     this.disconnecting = true;
 
     // Cancel any pending reconnect timer.
