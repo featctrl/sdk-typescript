@@ -71,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
-          COMMITS=$(git rev-list --count origin/main..origin/$BRANCH)
+          COMMITS=$(git rev-list --count origin/main..HEAD)
           if [ "$COMMITS" -eq 0 ]; then
             echo "No commits between main and $BRANCH — skipping merge."
             exit 0
