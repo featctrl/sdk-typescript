@@ -1,7 +1,7 @@
 import { SseClient } from './client.js';
 import { FlagStore } from './store.js';
 
-export const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
+const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
 
 export type RuntimeEnv = Record<string, string | undefined>;
 

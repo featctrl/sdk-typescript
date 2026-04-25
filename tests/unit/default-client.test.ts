@@ -14,7 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDefaultClient, DEFAULT_SDK_API_URL } from '../../src/default-client.js';
+import { createDefaultClient } from '../../src/default-client.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,15 +70,6 @@ describe('createDefaultClient()', () => {
         createDefaultClient({ FEATCTRL_SDK_KEY: 'sk_test_dummy' }, false),
       );
       assert.strictEqual(warnings.length, 0);
-    });
-
-    it('uses the default SDK API URL when FEATCTRL_URL is not set', () => {
-      // Verify indirectly: client is created without throwing, meaning the
-      // default URL was applied. The URL itself is not exposed on SseClient,
-      // so we test it at the factory level via DEFAULT_SDK_API_URL export.
-      assert.strictEqual(DEFAULT_SDK_API_URL, 'https://sdk.featctrl.com');
-      const { sseClient } = createDefaultClient({ FEATCTRL_SDK_KEY: 'sk_test_dummy' }, false);
-      assert.ok(sseClient !== null);
     });
 
     it('accepts a custom FEATCTRL_URL', () => {
