@@ -1,175 +1,132 @@
 /**
  * Unit tests for SseClient — 403 Forbidden handling.
  *
- * Uses Node.js built-in test runner (node:test) — no extra dependencies.
- * Network activity is suppressed by monkey-patching globalThis.fetch.
+ * Uses Vitest with fake timers to avoid real waits.
+ * Network activity is suppressed via vi.stubGlobal('fetch', ...).
  *
  * Run with:
- *   node --import tsx/esm --test tests/unit/client.test.ts
+ *   npm run test:unit
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SseClient } from '../../src/client.js';
+import { FlagStore } from '../../src/store.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Replace globalThis.fetch with a stub for the duration of `fn`, then restore. */
-async function withFetchStub(
-  stub: typeof globalThis.fetch,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const original = globalThis.fetch;
-  globalThis.fetch = stub;
-  try {
-    await fn();
-  } finally {
-    globalThis.fetch = original;
-  }
-}
-
 /** Return a minimal fetch stub that always resolves with the given status. */
 function fetchReturning(status: number): typeof globalThis.fetch {
-  return () =>
+  return vi.fn(() =>
     Promise.resolve({
       ok: status >= 200 && status < 300,
       status,
       statusText: String(status),
       body: null,
-    } as unknown as Response);
-}
-
-/** Suppress both console.warn and console.log during a block. */
-async function suppressConsole(fn: () => Promise<void>): Promise<void> {
-  const noop = () => {};
-  const origWarn = console.warn;
-  const origLog = console.log;
-  console.warn = noop;
-  console.log = noop;
-  try {
-    await fn();
-  } finally {
-    console.warn = origWarn;
-    console.log = origLog;
-  }
-}
-
-/** Capture console.warn calls during a block, then restore. */
-async function captureWarnings(fn: () => Promise<void>): Promise<string[]> {
-  const captured: string[] = [];
-  const original = console.warn;
-  console.warn = (...args: unknown[]) => captured.push(args.map(String).join(' '));
-  try {
-    await fn();
-  } finally {
-    console.warn = original;
-  }
-  return captured;
+    } as unknown as Response),
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('SseClient — 403 Forbidden handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it('fires onForbidden listener when server returns 403', async () => {
+    vi.stubGlobal('fetch', fetchReturning(403));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
     let forbiddenCalled = false;
+    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    client.onForbidden(() => { forbiddenCalled = true; });
 
-    await suppressConsole(async () => {
-      await withFetchStub(fetchReturning(403), async () => {
-        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-        client.onForbidden(() => { forbiddenCalled = true; });
-        // Yield to the event loop so the in-flight _connect() can complete.
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    // Flush the floating _connect() promise (fetch resolves as a microtask).
+    await vi.runAllTimersAsync();
 
-    assert.strictEqual(forbiddenCalled, true);
+    expect(forbiddenCalled).toBe(true);
   });
 
   it('logs a warning mentioning 403 Forbidden', async () => {
-    let warnings: string[] = [];
+    vi.stubGlobal('fetch', fetchReturning(403));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await withFetchStub(fetchReturning(403), async () => {
-      warnings = await captureWarnings(async () => {
-        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-        // Register a no-op listener to silence unused-variable lint hints.
-        client.onForbidden(() => {});
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    client.onForbidden(() => {});
 
-    assert.ok(
-      warnings.some((w) => w.includes('403 Forbidden')),
-      `Expected a warning about 403 Forbidden, got: ${JSON.stringify(warnings)}`,
-    );
+    await vi.runAllTimersAsync();
+
+    const allWarnings = warnSpy.mock.calls.map((args) => args.join(' '));
+    expect(allWarnings.some((w) => w.includes('403 Forbidden'))).toBe(true);
   });
 
   it('does not schedule a reconnect after 403', async () => {
-    let connectCallCount = 0;
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 403, statusText: '403', body: null } as unknown as Response),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await suppressConsole(async () => {
-      await withFetchStub(() => {
-        connectCallCount++;
-        return Promise.resolve({
-          ok: false,
-          status: 403,
-          statusText: '403',
-          body: null,
-        } as unknown as Response);
-      }, async () => {
-        new SseClient({ sdkKey: 'sk_test_dummy' });
-        // Wait long enough that any reconnect timer would have fired (it shouldn't).
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    new SseClient({ sdkKey: 'sk_test_dummy' });
 
-    // fetch should have been called exactly once — no retry.
-    assert.strictEqual(connectCallCount, 1);
+    // Flush the initial _connect(), then advance past the MAX_BACKOFF_MS to confirm
+    // no reconnect timer was ever scheduled (fetch must be called exactly once).
+    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('flagStore.isEnabled() returns false (default) after a 403', async () => {
-    const { FlagStore } = await import('../../src/store.js');
+    vi.stubGlobal('fetch', fetchReturning(403));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
     const flagStore = new FlagStore();
+    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    client.onSnapshot((flags) => flagStore.setSnapshot(flags));
 
-    await suppressConsole(async () => {
-      await withFetchStub(fetchReturning(403), async () => {
-        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-        client.onSnapshot((flags) => flagStore.setSnapshot(flags));
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    await vi.runAllTimersAsync();
 
-    assert.strictEqual(flagStore.isEnabled('any-flag'), false);
+    expect(flagStore.isEnabled('any-flag')).toBe(false);
   });
 
   it('disconnect() after 403 does not throw (silent no-op)', async () => {
-    let client!: SseClient;
+    vi.stubGlobal('fetch', fetchReturning(403));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await suppressConsole(async () => {
-      await withFetchStub(fetchReturning(403), async () => {
-        client = new SseClient({ sdkKey: 'sk_test_dummy' });
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    await vi.runAllTimersAsync();
 
-    assert.doesNotThrow(() => {
+    expect(() => {
       client.disconnect();
       client.disconnect();
-    });
+    }).not.toThrow();
   });
 
   it('onForbidden supports multiple listeners', async () => {
+    vi.stubGlobal('fetch', fetchReturning(403));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
     let count = 0;
+    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    client.onForbidden(() => { count++; });
+    client.onForbidden(() => { count++; });
 
-    await suppressConsole(async () => {
-      await withFetchStub(fetchReturning(403), async () => {
-        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-        client.onForbidden(() => { count++; });
-        client.onForbidden(() => { count++; });
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      });
-    });
+    await vi.runAllTimersAsync();
 
-    assert.strictEqual(count, 2);
+    expect(count).toBe(2);
   });
 });
 
