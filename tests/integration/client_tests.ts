@@ -32,18 +32,23 @@ describe('SseClient — integration', () => {
         10_000,
       );
 
-      const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
-      client.onConnected((connUuid, instUuid) => {
+      try {
+        const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
+        client.onConnected((connUuid, instUuid) => {
+          clearTimeout(timeout);
+          try {
+            expect(connUuid).toBeTruthy();
+            expect(instUuid).toBeTruthy();
+            client.disconnect();
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      } catch (err) {
         clearTimeout(timeout);
-        try {
-          expect(connUuid).toBeTruthy();
-          expect(instUuid).toBeTruthy();
-          client.disconnect();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
+        reject(err);
+      }
     });
   });
 
@@ -57,20 +62,25 @@ describe('SseClient — integration', () => {
         10_000,
       );
 
-      const store = new FlagStore();
-      const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
-      client.onSnapshot((flags) => {
+      try {
+        const store = new FlagStore();
+        const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
+        client.onSnapshot((flags) => {
+          clearTimeout(timeout);
+          try {
+            store.setSnapshot(flags);
+            // An empty map is valid when the environment has no flags configured.
+            expect(store.getAll()).toBeInstanceOf(Map);
+            client.disconnect();
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      } catch (err) {
         clearTimeout(timeout);
-        try {
-          store.setSnapshot(flags);
-          // An empty map is valid when the environment has no flags configured.
-          expect(store.getAll()).toBeInstanceOf(Map);
-          client.disconnect();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
+        reject(err);
+      }
     });
   });
 });
