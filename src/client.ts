@@ -13,7 +13,8 @@ interface SseClientConfig {
   snapshotMode?: boolean;
   /**
    * When `true` (default), the client connects automatically upon construction.
-   * Pass `false` to defer connection (e.g., in tests to avoid real network activity).
+   * Pass `false` to disable automatic connection and keep networking off
+   * (for example, in tests to avoid real network activity).
    * @default true
    */
   autoConnect?: boolean;
