@@ -12,7 +12,7 @@ flag store up to date in real time. It is framework-agnostic: use it standalone 
 process, or pair it with other `@featctrl/*` plugins to expose flags to a TypeScript based application.
 
 > **Important** — this package is designed for **Node.js server-side code only**.
-> It uses the native Node.js 18+ `fetch` API with streaming and does **not** use
+> It uses the native Node.js 22+ `fetch` API with streaming and does **not** use
 > the browser-only `EventSource` API. The SDK key must never be exposed to the browser.
 
 ---
@@ -23,7 +23,7 @@ process, or pair it with other `@featctrl/*` plugins to expose flags to a TypeSc
 npm install @featctrl/typescript
 ```
 
-Requires **Node.js ≥ 18**.
+Requires **Node.js ≥ 22**.
 
 ---
 
