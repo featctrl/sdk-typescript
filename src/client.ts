@@ -173,6 +173,8 @@ export class SseClient {
           'Retries permanently disabled. Default flag values will be served indefinitely.',
         );
         this.permanentlyStopped = true;
+        this.abortController?.abort();
+        this.abortController = null;
         this._forbiddenListeners.forEach((fn) => fn());
         return;
       }
