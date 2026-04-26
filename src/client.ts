@@ -25,7 +25,7 @@ const MAX_BACKOFF_MS = 30_000;
 const DEFAULT_HEARTBEAT_WATCHDOG_SECS = 120;
 
 /**
- * SSE client for Node.js 18+.
+ * SSE client for Node.js 22+.
  *
  * Uses the native `fetch` API with `response.body.getReader()` to consume the
  * server-sent event stream. Listeners are registered via `on*()` methods and
