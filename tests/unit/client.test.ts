@@ -72,12 +72,13 @@ async function captureWarnings(fn: () => Promise<void>): Promise<string[]> {
 describe('SseClient — 403 Forbidden handling', () => {
   it('fires onForbidden listener when server returns 403', async () => {
     let forbiddenCalled = false;
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-    client.onForbidden(() => { forbiddenCalled = true; });
 
     await suppressConsole(async () => {
       await withFetchStub(fetchReturning(403), async () => {
-        await client.connect();
+        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+        client.onForbidden(() => { forbiddenCalled = true; });
+        // Yield to the event loop so the in-flight _connect() can complete.
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 
@@ -85,11 +86,14 @@ describe('SseClient — 403 Forbidden handling', () => {
   });
 
   it('logs a warning mentioning 403 Forbidden', async () => {
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    let warnings: string[] = [];
 
-    const warnings = await captureWarnings(async () => {
-      await withFetchStub(fetchReturning(403), async () => {
-        await client.connect();
+    await withFetchStub(fetchReturning(403), async () => {
+      warnings = await captureWarnings(async () => {
+        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+        // Register a no-op listener to silence unused-variable lint hints.
+        client.onForbidden(() => {});
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 
@@ -100,7 +104,6 @@ describe('SseClient — 403 Forbidden handling', () => {
   });
 
   it('does not schedule a reconnect after 403', async () => {
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
     let connectCallCount = 0;
 
     await suppressConsole(async () => {
@@ -113,9 +116,9 @@ describe('SseClient — 403 Forbidden handling', () => {
           body: null,
         } as unknown as Response);
       }, async () => {
-        await client.connect();
-        // Wait a tick to ensure no reconnect timer fires immediately.
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        new SseClient({ sdkKey: 'sk_test_dummy' });
+        // Wait long enough that any reconnect timer would have fired (it shouldn't).
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 
@@ -126,12 +129,12 @@ describe('SseClient — 403 Forbidden handling', () => {
   it('flagStore.isEnabled() returns false (default) after a 403', async () => {
     const { FlagStore } = await import('../../src/store.js');
     const flagStore = new FlagStore();
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-    client.onSnapshot((flags) => flagStore.setSnapshot(flags));
 
     await suppressConsole(async () => {
       await withFetchStub(fetchReturning(403), async () => {
-        await client.connect();
+        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+        client.onSnapshot((flags) => flagStore.setSnapshot(flags));
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 
@@ -139,11 +142,12 @@ describe('SseClient — 403 Forbidden handling', () => {
   });
 
   it('disconnect() after 403 does not throw (silent no-op)', async () => {
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+    let client!: SseClient;
 
     await suppressConsole(async () => {
       await withFetchStub(fetchReturning(403), async () => {
-        await client.connect();
+        client = new SseClient({ sdkKey: 'sk_test_dummy' });
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 
@@ -155,13 +159,13 @@ describe('SseClient — 403 Forbidden handling', () => {
 
   it('onForbidden supports multiple listeners', async () => {
     let count = 0;
-    const client = new SseClient({ sdkKey: 'sk_test_dummy' });
-    client.onForbidden(() => { count++; });
-    client.onForbidden(() => { count++; });
 
     await suppressConsole(async () => {
       await withFetchStub(fetchReturning(403), async () => {
-        await client.connect();
+        const client = new SseClient({ sdkKey: 'sk_test_dummy' });
+        client.onForbidden(() => { count++; });
+        client.onForbidden(() => { count++; });
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
       });
     });
 

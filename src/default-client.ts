@@ -16,9 +16,8 @@ export type RuntimeEnv = Record<string, string | undefined>;
  * object without any ESM module-cache tricks.
  *
  * @param env - Key/value environment map (defaults to `process.env`).
- * @param autoConnect - When `true` (default) the client's `connect()` is called
- *                      immediately. Pass `false` in tests to avoid real network
- *                      activity.
+ * @param autoConnect - When `true` (default) the SseClient connects automatically.
+ *                      Pass `false` in tests to avoid real network activity.
  */
 export function createDefaultClient(
   env: RuntimeEnv = (globalThis as { process?: { env?: RuntimeEnv } }).process?.env ?? {},
@@ -51,17 +50,13 @@ export function createDefaultClient(
     return { flagStore, sseClient: null };
   }
 
-  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot' });
+  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot', autoConnect });
   sseClient.onSnapshot((flags) => flagStore.setSnapshot(flags));
 
   if (mode === 'livestreaming') {
     sseClient
       .onFlagChanged((flag) => flagStore.applyChange(flag))
       .onFlagDeleted((key) => flagStore.applyDelete(key));
-  }
-
-  if (autoConnect) {
-    void sseClient.connect().catch(() => undefined);
   }
 
   return { flagStore, sseClient };

@@ -11,6 +11,12 @@ interface SseClientConfig {
    * processes or batch jobs. @default false
    */
   snapshotMode?: boolean;
+  /**
+   * When `true` (default), the client connects automatically upon construction.
+   * Pass `false` to defer connection (e.g., in tests to avoid real network activity).
+   * @default true
+   */
+  autoConnect?: boolean;
 }
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
@@ -68,6 +74,10 @@ export class SseClient {
       }
     } else {
       this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
+    }
+
+    if (config.autoConnect !== false) {
+      void this._connect().catch(() => undefined);
     }
   }
 
@@ -127,7 +137,7 @@ export class SseClient {
    * @param previousUuid - Connection UUID from a previous session, passed to the
    *                       FeatCtrl backend for graceful transfer acknowledgement.
    */
-  async connect(previousUuid?: string): Promise<void> {
+  private async _connect(previousUuid?: string): Promise<void> {
     this.disconnecting = false;
 
     // Cancel any pending reconnect timer before opening a new connection.
@@ -189,7 +199,7 @@ export class SseClient {
           this._clearWatchdog();
           // Stream ended cleanly — reconnect unless we are shutting down.
           if (!this.disconnecting && !this.permanentlyStopped) {
-            this.connect(this.connectionUuid ?? undefined).catch(() => undefined);
+            this._connect(this.connectionUuid ?? undefined).catch(() => undefined);
           }
           break;
         }
@@ -308,7 +318,7 @@ export class SseClient {
         this.abortController?.abort();
         this.abortController = null;
         if (!this.disconnecting) {
-          this.connect(oldConnUuid ?? undefined).catch(() => undefined);
+          this._connect(oldConnUuid ?? undefined).catch(() => undefined);
         }
         break;
       }
@@ -332,7 +342,7 @@ export class SseClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.disconnecting) {
-        this.connect().catch(() => undefined);
+        this._connect().catch(() => undefined);
       }
     }, delay);
   }
@@ -353,7 +363,7 @@ export class SseClient {
       this._watchdogTimeoutListeners.forEach((fn) => fn());
       this.abortController?.abort();
       this.abortController = null;
-      this.connect(savedUuid ?? undefined).catch(() => undefined);
+      this._connect(savedUuid ?? undefined).catch(() => undefined);
     }, this._watchdogSecs * 1_000);
   }
 }
