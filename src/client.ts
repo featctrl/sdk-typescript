@@ -5,14 +5,28 @@ interface SseClientConfig {
   /** Base URL of the FeatCtrl backend. @default "https://sdk.featctrl.com" */
   sdkApiUrl?: string;
   sdkKey: string;
+  /**
+   * When `true`, the client disconnects automatically after receiving the first
+   * `flags.snapshot` event and does not reconnect. Suitable for short-lived
+   * processes or batch jobs. @default false
+   */
+  snapshotMode?: boolean;
+  /**
+   * When `true` (default), the client connects automatically upon construction.
+   * Pass `false` to disable automatic connection and keep networking off
+   * (for example, in tests to avoid real network activity).
+   * @default true
+   */
+  autoConnect?: boolean;
 }
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
 const INITIAL_BACKOFF_MS = 3_000;
 const MAX_BACKOFF_MS = 30_000;
+const DEFAULT_HEARTBEAT_WATCHDOG_SECS = 120;
 
 /**
- * SSE client for Node.js 18+.
+ * SSE client for Node.js 22+.
  *
  * Uses the native `fetch` API with `response.body.getReader()` to consume the
  * server-sent event stream. Listeners are registered via `on*()` methods and
@@ -21,24 +35,51 @@ const MAX_BACKOFF_MS = 30_000;
 export class SseClient {
   private readonly sdkApiUrl: string;
   private readonly sdkKey: string;
+  private readonly _watchdogSecs: number;
+  private readonly _snapshotMode: boolean;
 
   private abortController: AbortController | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private connectionUuid: string | null = null;
   private instanceUuid: string | null = null;
   private backoffMs = INITIAL_BACKOFF_MS;
   private disconnecting = false;
+  private permanentlyStopped = false;
 
   // ── Listener registries ───────────────────────────────────────────────────
 
-  private _connectedListeners:    Array<(connUuid: string, instUuid: string) => void> = [];
-  private _disconnectedListeners: Array<() => void> = [];
-  private _snapshotListeners:     Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
-  private _flagChangedListeners:  Array<(flag: FeatCtrlFlag) => void> = [];
-  private _flagDeletedListeners:  Array<(key: string) => void> = [];
+  private _connectedListeners:         Array<(connUuid: string, instUuid: string) => void> = [];
+  private _disconnectedListeners:      Array<() => void> = [];
+  private _snapshotListeners:          Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
+  private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
+  private _flagDeletedListeners:       Array<(key: string) => void> = [];
+  private _watchdogTimeoutListeners:   Array<() => void> = [];
+  private _forbiddenListeners:         Array<() => void> = [];
 
   constructor(config: SseClientConfig) {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
     this.sdkKey = config.sdkKey;
+    this._snapshotMode = config.snapshotMode ?? false;
+
+    const raw = process.env['FEATCTRL_HEARTBEAT_WATCHDOG_SECS'];
+    if (raw !== undefined) {
+      const parsed = parseInt(raw, 10);
+      if (isNaN(parsed) || parsed <= 0) {
+        console.warn(
+          `[FeatCtrl] Invalid FEATCTRL_HEARTBEAT_WATCHDOG_SECS value "${raw}", using default: ${DEFAULT_HEARTBEAT_WATCHDOG_SECS}s`,
+        );
+        this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
+      } else {
+        this._watchdogSecs = parsed;
+      }
+    } else {
+      this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
+    }
+
+    if (config.autoConnect !== false) {
+      void this._connect().catch(() => undefined);
+    }
   }
 
   // ── Public listener registration ─────────────────────────────────────────
@@ -73,6 +114,22 @@ export class SseClient {
     return this;
   }
 
+  /** Register a listener called when the heartbeat watchdog timer expires. Chainable. */
+  onWatchdogTimeout(fn: () => void): this {
+    this._watchdogTimeoutListeners.push(fn);
+    return this;
+  }
+
+  /**
+   * Register a listener called when the server returns 403 Forbidden.
+   * After this event, the client will never reconnect — default flag values
+   * are served indefinitely. Chainable.
+   */
+  onForbidden(fn: () => void): this {
+    this._forbiddenListeners.push(fn);
+    return this;
+  }
+
   // ── Connection lifecycle ──────────────────────────────────────────────────
 
   /**
@@ -81,8 +138,14 @@ export class SseClient {
    * @param previousUuid - Connection UUID from a previous session, passed to the
    *                       FeatCtrl backend for graceful transfer acknowledgement.
    */
-  async connect(previousUuid?: string): Promise<void> {
+  private async _connect(previousUuid?: string): Promise<void> {
     this.disconnecting = false;
+
+    // Cancel any pending reconnect timer before opening a new connection.
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     const url = new URL(`${this.sdkApiUrl}/sse`);
     url.searchParams.set('sdk_key', this.sdkKey);
@@ -105,6 +168,17 @@ export class SseClient {
     }
 
     if (!response.ok || !response.body) {
+      if (response.status === 403) {
+        console.warn(
+          '[FeatCtrl] Received 403 Forbidden — SDK key not recognized by the server. ' +
+          'Retries permanently disabled. Default flag values will be served indefinitely.',
+        );
+        this.permanentlyStopped = true;
+        this.abortController?.abort();
+        this.abortController = null;
+        this._forbiddenListeners.forEach((fn) => fn());
+        return;
+      }
       console.log('[FeatCtrl] Bad response:', response.status, response.statusText);
       if (this.disconnecting) return;
       this._scheduleReconnect();
@@ -125,9 +199,10 @@ export class SseClient {
         const { done, value } = await reader.read();
 
         if (done) {
+          this._clearWatchdog();
           // Stream ended cleanly — reconnect unless we are shutting down.
-          if (!this.disconnecting) {
-            this.connect(this.connectionUuid ?? undefined).catch(() => undefined);
+          if (!this.disconnecting && !this.permanentlyStopped) {
+            this._connect(this.connectionUuid ?? undefined).catch(() => undefined);
           }
           break;
         }
@@ -154,14 +229,31 @@ export class SseClient {
         }
       }
     } catch {
-      if (this.disconnecting) return;
+      this._clearWatchdog();
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore reader cancellation failures during reconnect cleanup.
+      }
+      this.abortController?.abort();
+      this.abortController = null;
+      if (this.disconnecting || this.permanentlyStopped) return;
       this._scheduleReconnect();
     }
   }
 
   /** Gracefully disconnect from the FeatCtrl backend and notify the server. */
   disconnect(): void {
+    if (this.disconnecting || this.permanentlyStopped) return;
     this.disconnecting = true;
+
+    // Cancel any pending reconnect timer.
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    this._clearWatchdog();
     this._disconnectedListeners.forEach((fn) => fn());
 
     const connUuid = this.connectionUuid;
@@ -184,12 +276,12 @@ export class SseClient {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private _handleEvent(type: string, data: string): void {
-    console.log('[FeatCtrl] Event received:', type);
     switch (type) {
       case 'connection.established': {
         const parsed = JSON.parse(data) as { connection_uuid: string; instance_uuid: string };
         this.connectionUuid = parsed.connection_uuid;
         this.instanceUuid = parsed.instance_uuid;
+        this._resetWatchdog();
         this._connectedListeners.forEach((fn) => fn(parsed.connection_uuid, parsed.instance_uuid));
         break;
       }
@@ -198,6 +290,9 @@ export class SseClient {
         const parsed = JSON.parse(data) as { flags: FeatCtrlFlag[] };
         const map = new Map<string, FeatCtrlFlag>(parsed.flags.map((f) => [f.key, f]));
         this._snapshotListeners.forEach((fn) => fn(map));
+        if (this._snapshotMode) {
+          this.disconnect();
+        }
         break;
       }
 
@@ -223,10 +318,11 @@ export class SseClient {
         // The FeatCtrl backend is doing a graceful shutdown.  Reconnect and pass the old
         // connection UUID so the server can publish the transfer ack.
         const oldConnUuid = this.connectionUuid;
+        this._clearWatchdog();
         this.abortController?.abort();
         this.abortController = null;
         if (!this.disconnecting) {
-          this.connect(oldConnUuid ?? undefined).catch(() => undefined);
+          this._connect(oldConnUuid ?? undefined).catch(() => undefined);
         }
         break;
       }
@@ -241,15 +337,37 @@ export class SseClient {
     if (!this.connectionUuid || !this.instanceUuid) return;
     const url = `${this.sdkApiUrl}/heartbeat?connection_uuid=${this.connectionUuid}&instance_uuid=${this.instanceUuid}`;
     fetch(url, { method: 'POST' }).catch(() => undefined);
+    this._resetWatchdog();
   }
 
   private _scheduleReconnect(): void {
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.disconnecting) {
-        this.connect().catch(() => undefined);
+        this._connect().catch(() => undefined);
       }
     }, delay);
+  }
+
+  private _clearWatchdog(): void {
+    if (this._watchdogTimer !== null) {
+      clearTimeout(this._watchdogTimer);
+      this._watchdogTimer = null;
+    }
+  }
+
+  private _resetWatchdog(): void {
+    this._clearWatchdog();
+    this._watchdogTimer = setTimeout(() => {
+      this._watchdogTimer = null;
+      if (this.disconnecting) return;
+      const savedUuid = this.connectionUuid;
+      this._watchdogTimeoutListeners.forEach((fn) => fn());
+      this.abortController?.abort();
+      this.abortController = null;
+      this._connect(savedUuid ?? undefined).catch(() => undefined);
+    }, this._watchdogSecs * 1_000);
   }
 }

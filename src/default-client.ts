@@ -1,7 +1,10 @@
 import { SseClient } from './client.js';
 import { FlagStore } from './store.js';
+import type { FeatCtrlClient, FeatCtrlFlagStore } from './types.js';
 
-export const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
+const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
+const VALID_MODES = ['livestreaming', 'snapshot'] as const;
+type ConnectionMode = (typeof VALID_MODES)[number];
 
 export type RuntimeEnv = Record<string, string | undefined>;
 
@@ -13,9 +16,8 @@ export type RuntimeEnv = Record<string, string | undefined>;
  * object without any ESM module-cache tricks.
  *
  * @param env - Key/value environment map (defaults to `process.env`).
- * @param autoConnect - When `true` (default) the client's `connect()` is called
- *                      immediately. Pass `false` in tests to avoid real network
- *                      activity.
+ * @param autoConnect - When `true` (default) the SseClient connects automatically.
+ *                      Pass `false` in tests to avoid real network activity.
  */
 export function createDefaultClient(
   env: RuntimeEnv = (globalThis as { process?: { env?: RuntimeEnv } }).process?.env ?? {},
@@ -24,6 +26,17 @@ export function createDefaultClient(
   const sdkKey = env.FEATCTRL_SDK_KEY?.trim();
   const sdkApiUrl = env.FEATCTRL_URL?.trim() || DEFAULT_SDK_API_URL;
 
+  const rawMode = env.FEATCTRL_MODE?.trim();
+  let mode: ConnectionMode = 'livestreaming';
+  if (rawMode !== undefined) {
+    if ((VALID_MODES as readonly string[]).includes(rawMode)) {
+      mode = rawMode as ConnectionMode;
+    } else {
+      console.warn(
+        `[FeatCtrl] Invalid FEATCTRL_MODE value "${rawMode}". Valid values are: ${VALID_MODES.join(', ')}. Falling back to "livestreaming".`,
+      );
+    }
+  }
   const flagStore = new FlagStore();
 
   if (!sdkKey) {
@@ -35,14 +48,15 @@ export function createDefaultClient(
     return { flagStore, sseClient: null };
   }
 
-  const sseClient = new SseClient({ sdkApiUrl, sdkKey });
-  sseClient
-    .onSnapshot((flags) => flagStore.setSnapshot(flags))
-    .onFlagChanged((flag) => flagStore.applyChange(flag))
-    .onFlagDeleted((key) => flagStore.applyDelete(key));
+  console.log(`[FeatCtrl] Running in ${mode} mode.`);
 
-  if (autoConnect) {
-    void sseClient.connect().catch(() => undefined);
+  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot', autoConnect });
+  sseClient.onSnapshot((flags) => flagStore.setSnapshot(flags));
+
+  if (mode === 'livestreaming') {
+    sseClient
+      .onFlagChanged((flag) => flagStore.applyChange(flag))
+      .onFlagDeleted((key) => flagStore.applyDelete(key));
   }
 
   return { flagStore, sseClient };
@@ -53,10 +67,10 @@ export function createDefaultClient(
 const { flagStore: _flagStore, sseClient: _sseClient } = createDefaultClient();
 
 /** Shared in-memory flag store, kept up to date automatically when FEATCTRL_SDK_KEY is set. */
-export const flagStore: FlagStore = _flagStore;
+export const flagStore: FeatCtrlFlagStore = _flagStore;
 
 /**
  * SSE client started automatically when FEATCTRL_SDK_KEY is available.
  * It is `null` when the SDK key is not configured.
  */
-export const sseClient: SseClient | null = _sseClient;
+export const sseClient: FeatCtrlClient | null = _sseClient;

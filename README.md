@@ -12,7 +12,7 @@ flag store up to date in real time. It is framework-agnostic: use it standalone 
 process, or pair it with other `@featctrl/*` plugins to expose flags to a TypeScript based application.
 
 > **Important** — this package is designed for **Node.js server-side code only**.
-> It uses the native Node.js 18+ `fetch` API with streaming and does **not** use
+> It uses the native Node.js 22+ `fetch` API with streaming and does **not** use
 > the browser-only `EventSource` API. The SDK key must never be exposed to the browser.
 
 ---
@@ -23,7 +23,7 @@ process, or pair it with other `@featctrl/*` plugins to expose flags to a TypeSc
 npm install @featctrl/typescript
 ```
 
-Requires **Node.js ≥ 18**.
+Requires **Node.js ≥ 22**.
 
 ---
 
@@ -40,8 +40,12 @@ if (flagStore.isEnabled('new-checkout')) {
 
 Environment variables used by the auto-start client:
 
-- `FEATCTRL_SDK_KEY` (required)
-- `FEATCTRL_URL` (optional, defaults to `https://sdk.featctrl.com`)
+| Variable                          | Required | Default                        | Description                                                                             |
+|-----------------------------------|----------|--------------------------------|-----------------------------------------------------------------------------------------|
+| `FEATCTRL_SDK_KEY`                | ✅ yes   | —                              | SDK key issued by FeatCtrl                                                              |
+| `FEATCTRL_URL`                    | no       | `https://sdk.featctrl.com`     | Override the FeatCtrl backend URL                                                       |
+| `FEATCTRL_MODE`                   | no       | `livestreaming`                | `livestreaming` (persistent SSE) or `snapshot` (connect once, then disconnect)          |
+| `FEATCTRL_HEARTBEAT_WATCHDOG_SECS`| no       | `120`                          | Seconds without a heartbeat before the client reconnects automatically. Must be &gt; 0. |
 
 ---
 
@@ -68,6 +72,12 @@ sseClient
   })
   .onFlagDeleted((key) => {
     console.log(`[FeatCtrl] flag deleted: ${key}`);
+  })
+  .onWatchdogTimeout(() => {
+    console.warn('[FeatCtrl] heartbeat watchdog timed out — reconnecting');
+  })
+  .onForbidden(() => {
+    console.error('[FeatCtrl] 403 Forbidden — SDK key rejected, retries disabled');
   });
 
 // On process shutdown:
@@ -92,14 +102,16 @@ Always available, even when `FEATCTRL_SDK_KEY` is not set (returns safe defaults
 
 `null` when `FEATCTRL_SDK_KEY` is not set. All `on*()` methods return `this` for chaining.
 
-| Method           | Signature                                                      | Description                                |
-|------------------|----------------------------------------------------------------|--------------------------------------------|
-| `onConnected`    | `(fn: (connUuid: string, instUuid: string) => void) => this`   | SSE connection established                 |
-| `onDisconnected` | `(fn: () => void) => this`                                     | Client disconnected                        |
-| `onSnapshot`     | `(fn: (flags: Map<string, FeatCtrlFlag>) => void) => this`     | Full flag snapshot received on connect     |
-| `onFlagChanged`  | `(fn: (flag: FeatCtrlFlag) => void) => this`                   | A flag was created or updated              |
-| `onFlagDeleted`  | `(fn: (key: string) => void) => this`                          | A flag was deleted                         |
-| `disconnect`     | `() => void`                                                   | Abort the connection and notify the backend|
+| Method              | Signature                                                      | Description                                                                              |
+|---------------------|----------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `onConnected`       | `(fn: (connUuid: string, instUuid: string) => void) => this`   | SSE connection established                                                               |
+| `onDisconnected`    | `(fn: () => void) => this`                                     | Client disconnected                                                                      |
+| `onSnapshot`        | `(fn: (flags: Map<string, FeatCtrlFlag>) => void) => this`     | Full flag snapshot received on connect                                                   |
+| `onFlagChanged`     | `(fn: (flag: FeatCtrlFlag) => void) => this`                   | A flag was created or updated                                                            |
+| `onFlagDeleted`     | `(fn: (key: string) => void) => this`                          | A flag was deleted                                                                       |
+| `onWatchdogTimeout` | `(fn: () => void) => this`                                     | Heartbeat watchdog expired — the client is reconnecting                                  |
+| `onForbidden`       | `(fn: () => void) => this`                                     | Server returned 403 — SDK key rejected, retries permanently disabled                     |
+| `disconnect`        | `() => void`                                                   | Abort the connection and notify the backend                                              |
 
 ### `FeatCtrlFlag`
 

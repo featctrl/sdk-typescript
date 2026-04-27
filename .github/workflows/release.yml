@@ -19,8 +19,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Full history needed for merging; use a PAT so push/PR events
-          # trigger downstream workflows (GITHUB_TOKEN pushes are skipped by default)
+          # Full history needed for merging; use the default GITHUB_TOKEN.
+          # Note: pushes made with GITHUB_TOKEN do not trigger downstream workflows by default.
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
@@ -33,7 +33,7 @@ jobs:
 
       - name: Read version from package.json
         id: pkg
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        run: echo "version=$(node -p 'require("./package.json").version')" >> $GITHUB_OUTPUT
 
       - name: Guard — fail if tag already exists
         run: |
@@ -48,6 +48,9 @@ jobs:
 
       - name: Type-check
         run: npm run typecheck
+
+      - name: Type-check tests
+        run: npm run typecheck:tests
 
       - name: Run unit tests
         run: npm run test:unit
@@ -68,6 +71,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
+          COMMITS=$(git rev-list --count origin/main..HEAD)
+          if [ "$COMMITS" -eq 0 ]; then
+            echo "No commits on $BRANCH ahead of main — skipping merge."
+            exit 0
+          fi
           # Create the PR (will succeed even if it already exists)
           gh pr create \
             --base main \
