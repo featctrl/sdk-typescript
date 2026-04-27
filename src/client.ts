@@ -318,6 +318,7 @@ export class SseClient {
         // The FeatCtrl backend is doing a graceful shutdown.  Reconnect and pass the old
         // connection UUID so the server can publish the transfer ack.
         const oldConnUuid = this.connectionUuid;
+        this._clearWatchdog();
         this.abortController?.abort();
         this.abortController = null;
         if (!this.disconnecting) {
