@@ -2,6 +2,10 @@
   "name": "@featctrl/typescript",
   "version": "0.1.0",
   "description": "FeatCtrl TypeScript SDK — SSE client for Node.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/featctrl/sdk-typescript.git"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
