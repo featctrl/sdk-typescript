@@ -73,10 +73,11 @@ describe('SseClient — integration', () => {
             store.setSnapshot(flags);
             // An empty map is valid when the environment has no flags configured.
             expect(store.getAll()).toBeInstanceOf(Map);
-            client.disconnect();
             resolve();
           } catch (err) {
             reject(err);
+          } finally {
+            client?.disconnect();
           }
         });
       } catch (err) {
