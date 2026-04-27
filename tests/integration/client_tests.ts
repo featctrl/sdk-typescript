@@ -40,10 +40,11 @@ describe('SseClient — integration', () => {
           try {
             expect(connUuid).toBeTruthy();
             expect(instUuid).toBeTruthy();
-            client.disconnect();
             resolve();
           } catch (err) {
             reject(err);
+          } finally {
+            client?.disconnect();
           }
         });
       } catch (err) {
