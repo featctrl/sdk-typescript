@@ -37,8 +37,6 @@ export function createDefaultClient(
       );
     }
   }
-  console.log(`[FeatCtrl] Running in ${mode} mode.`);
-
   const flagStore = new FlagStore();
 
   if (!sdkKey) {
@@ -49,6 +47,8 @@ export function createDefaultClient(
     );
     return { flagStore, sseClient: null };
   }
+
+  console.log(`[FeatCtrl] Running in ${mode} mode.`);
 
   const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot', autoConnect });
   sseClient.onSnapshot((flags) => flagStore.setSnapshot(flags));

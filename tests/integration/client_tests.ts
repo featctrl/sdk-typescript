@@ -27,13 +27,14 @@ describe('SseClient — integration', () => {
    */
   it.skipIf(!SDK_KEY)('TSSDK-001: receives connection.established with valid UUIDs', () => {
     return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error('Timeout: connection.established not received within 10 s')),
-        10_000,
-      );
+      let client: SseClient | undefined;
+      const timeout = setTimeout(() => {
+        client?.disconnect();
+        reject(new Error('Timeout: connection.established not received within 10 s'));
+      }, 10_000);
 
       try {
-        const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
+        client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
         client.onConnected((connUuid, instUuid) => {
           clearTimeout(timeout);
           try {
@@ -57,14 +58,15 @@ describe('SseClient — integration', () => {
    */
   it.skipIf(!SDK_KEY)('TSSDK-002: receives flags.snapshot and populates FlagStore', () => {
     return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error('Timeout: flags.snapshot not received within 10 s')),
-        10_000,
-      );
+      let client: SseClient | undefined;
+      const timeout = setTimeout(() => {
+        client?.disconnect();
+        reject(new Error('Timeout: flags.snapshot not received within 10 s'));
+      }, 10_000);
 
       try {
         const store = new FlagStore();
-        const client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
+        client = new SseClient({ sdkApiUrl: SDK_API_URL, sdkKey: SDK_KEY });
         client.onSnapshot((flags) => {
           clearTimeout(timeout);
           try {
