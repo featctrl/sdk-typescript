@@ -28,7 +28,7 @@ export interface FeatCtrlClient {
  * Public interface for the auto-start flag store singleton (`flagStore`).
  */
 export interface FeatCtrlFlagStore {
-  isEnabled(key: string): boolean;
-  getConfig<T>(key: string): T | null;
+  isEnabled(key: string): boolean | undefined;
+  getConfig<T>(key: string): T | undefined;
   getAll(): ReadonlyMap<string, FeatCtrlFlag>;
 }
