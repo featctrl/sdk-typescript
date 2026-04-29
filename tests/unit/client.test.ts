@@ -86,11 +86,7 @@ describe('SseClient — 403 Forbidden handling', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-<<<<<<< release/0.1.2
   it('flagStore.isEnabled() returns undefined (key absent) after a 403', async () => {
-=======
-  it('flagStore.isEnabled() returns false (default) after a 403', async () => {
->>>>>>> main
     vi.stubGlobal('fetch', fetchReturning(403));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -101,11 +97,7 @@ describe('SseClient — 403 Forbidden handling', () => {
 
     await vi.runAllTimersAsync();
 
-<<<<<<< release/0.1.2
     expect(flagStore.isEnabled('any-flag')).toBeUndefined();
-=======
-    expect(flagStore.isEnabled('any-flag')).toBe(false);
->>>>>>> main
   });
 
   it('disconnect() after 403 does not throw (silent no-op)', async () => {

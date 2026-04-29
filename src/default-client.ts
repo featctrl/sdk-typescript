@@ -1,6 +1,7 @@
 import { SseClient } from './client.js';
 import { FlagStore } from './store.js';
 import type { FeatCtrlClient, FeatCtrlFlagStore } from './types.js';
+import { loadEnvIfNeeded } from './load-env.js';
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
 const VALID_MODES = ['livestreaming', 'snapshot'] as const;
@@ -63,6 +64,11 @@ export function createDefaultClient(
 }
 
 // ── Module-level singleton ────────────────────────────────────────────────────
+
+// Populate process.env from .env.local / .env before reading any variable,
+// so the SDK works out of the box in Vite server contexts where those files
+// are not pre-loaded into process.env.
+loadEnvIfNeeded();
 
 const { flagStore: _flagStore, sseClient: _sseClient } = createDefaultClient();
 

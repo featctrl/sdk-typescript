@@ -21,15 +21,9 @@ function makeFlag(key: string, enabled: boolean, config: FeatCtrlFlag['config'] 
 
 describe('FlagStore', () => {
   describe('isEnabled()', () => {
-<<<<<<< release/0.1.2
     it('returns undefined for an unknown flag key (TSSDK-003)', () => {
       const store = new FlagStore();
       expect(store.isEnabled('__nonexistent_flag__')).toBeUndefined();
-=======
-    it('returns false for an unknown flag key (TSSDK-003)', () => {
-      const store = new FlagStore();
-      expect(store.isEnabled('__nonexistent_flag__')).toBe(false);
->>>>>>> main
     });
 
     it('returns true after applyChange with enabled=true', () => {
@@ -44,7 +38,6 @@ describe('FlagStore', () => {
       expect(store.isEnabled('my-flag')).toBe(false);
     });
 
-<<<<<<< release/0.1.2
     it('applying a default with ?? returns the flag value when the key exists', () => {
       const store = new FlagStore();
       store.applyChange(makeFlag('enabled-flag', true));
@@ -63,24 +56,13 @@ describe('FlagStore', () => {
       store.applyChange(makeFlag('my-flag', true));
       store.applyDelete('my-flag');
       expect(store.isEnabled('my-flag')).toBeUndefined();
-=======
-    it('returns false for a flag that has been deleted', () => {
-      const store = new FlagStore();
-      store.applyChange(makeFlag('my-flag', true));
-      store.applyDelete('my-flag');
-      expect(store.isEnabled('my-flag')).toBe(false);
->>>>>>> main
     });
   });
 
   describe('getConfig()', () => {
     it('returns null for an unknown flag key (TSSDK-004)', () => {
       const store = new FlagStore();
-<<<<<<< release/0.1.2
       expect(store.getConfig('__nonexistent_flag__')).toBeUndefined();
-=======
-      expect(store.getConfig('__nonexistent_flag__')).toBeNull();
->>>>>>> main
     });
 
     it('returns the config object when present', () => {
@@ -92,11 +74,7 @@ describe('FlagStore', () => {
     it('returns null when config is explicitly null', () => {
       const store = new FlagStore();
       store.applyChange(makeFlag('no-cfg', true, null));
-<<<<<<< release/0.1.2
       expect(store.getConfig('no-cfg')).toBeUndefined();
-=======
-      expect(store.getConfig('no-cfg')).toBeNull();
->>>>>>> main
     });
   });
 
@@ -121,11 +99,7 @@ describe('FlagStore', () => {
       store.applyChange(makeFlag('delete-me', true));
       expect(store.isEnabled('delete-me')).toBe(true);
       store.applyDelete('delete-me');
-<<<<<<< release/0.1.2
       expect(store.isEnabled('delete-me')).toBeUndefined();
-=======
-      expect(store.isEnabled('delete-me')).toBe(false);
->>>>>>> main
     });
 
     it('is a no-op for an unknown key', () => {
@@ -140,11 +114,7 @@ describe('FlagStore', () => {
       store.applyChange(makeFlag('old', true));
       const newFlags = new Map([['new-flag', makeFlag('new-flag', true)]]);
       store.setSnapshot(newFlags);
-<<<<<<< release/0.1.2
       expect(store.isEnabled('old')).toBeUndefined();
-=======
-      expect(store.isEnabled('old')).toBe(false);
->>>>>>> main
       expect(store.isEnabled('new-flag')).toBe(true);
     });
   });
