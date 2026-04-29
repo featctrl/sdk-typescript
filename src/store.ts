@@ -25,24 +25,31 @@ export class FlagStore {
   }
 
   /**
-   * Returns `true` if the named flag exists and is enabled, `false` otherwise.
-   * Safe to call before the initial snapshot is received — returns `false`.
+   * Returns `true` if the named flag exists and is enabled, `false` if it
+   * exists and is disabled, or `undefined` if the key is not present in the
+   * store (e.g. before the initial snapshot is received, or the flag has been
+   * deleted, or if it doesn't exist at all).
+   *
+   * Use the `??` operator to apply a default:
+   * ```ts
+   * const enabled = flagStore.isEnabled('my-flag') ?? defaultValue;
+   * ```
    */
-  isEnabled(key: string): boolean {
-    return this.flags.get(key)?.enabled ?? false;
+  isEnabled(key: string): boolean | undefined {
+    return this.flags.get(key)?.enabled;
   }
 
   /**
-   * Returns the typed configuration object of a flag, or `null` if the flag
-   * does not exist or has no configuration.
+   * Returns the typed configuration object of a flag, or `undefined` if the
+   * flag does not exist or has no configuration.
    */
-  getConfig<T = unknown>(key: string): T | null {
-    return (this.flags.get(key)?.config as T) ?? null;
+  getConfig<T = unknown>(key: string): T | undefined {
+    return (this.flags.get(key)?.config as T) ?? undefined;
   }
 
   /**
    * Returns a read-only view of the full flag map.
-   * Used by the Vite plugin to serialise all flags into `/api/flags`.
+   * Used by the Vite plugin to serialize all flags into `/api/flags`.
    */
   getAll(): ReadonlyMap<string, FeatCtrlFlag> {
     return this.flags;

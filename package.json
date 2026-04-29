@@ -1,6 +1,10 @@
 {
   "name": "@featctrl/typescript",
+<<<<<<< release/0.1.2
+  "version": "0.1.2",
+=======
   "version": "0.1.1",
+>>>>>>> main
   "description": "FeatCtrl TypeScript SDK — SSE client for Node.js",
   "repository": {
     "type": "git",

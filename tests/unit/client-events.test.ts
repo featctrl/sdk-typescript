@@ -173,7 +173,7 @@ describe('_handleEvent — flag.deleted', () => {
 
     handleEvent(client, 'flag.deleted', JSON.stringify({ key: 'temp' }));
 
-    expect(store.isEnabled('temp')).toBe(false);
+    expect(store.isEnabled('temp')).toBeUndefined();
   });
 });
 
