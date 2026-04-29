@@ -47,6 +47,22 @@ Environment variables used by the auto-start client:
 | `FEATCTRL_MODE`                   | no       | `livestreaming`                | `livestreaming` (persistent SSE) or `snapshot` (connect once, then disconnect)          |
 | `FEATCTRL_HEARTBEAT_WATCHDOG_SECS`| no       | `120`                          | Seconds without a heartbeat before the client reconnects automatically. Must be &gt; 0. |
 
+### Automatic `.env` loading (Vite and similar frameworks)
+
+When the SDK is imported, it checks whether `FEATCTRL_SDK_KEY` is already present in
+`process.env`. If it is not, it automatically attempts to read the following files from the
+**project root** (`process.cwd()`), in order of priority:
+
+1. `.env.local` — local overrides, not committed to version control
+2. `.env` — base configuration
+
+This matches the Vite / Next.js convention. If neither file exists, or if they cannot be read,
+the SDK silently continues — no error is thrown.
+
+> **Vite server usage**: place your `FEATCTRL_SDK_KEY` (and any other `FEATCTRL_*` variables)
+> in a `.env` or `.env.local` file at your Vite project root. The SDK will load them
+> automatically before starting the SSE connection.
+
 ---
 
 ## Lifecycle hooks
