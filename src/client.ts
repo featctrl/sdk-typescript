@@ -18,6 +18,11 @@ interface SseClientConfig {
    * @default true
    */
   autoConnect?: boolean;
+  /**
+   * Number of seconds to wait for a heartbeat before assuming the connection
+   * has stalled and reconnecting. @default 120
+   */
+  watchdogSecs?: number;
 }
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
@@ -61,21 +66,7 @@ export class SseClient {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
     this.sdkKey = config.sdkKey;
     this._snapshotMode = config.snapshotMode ?? false;
-
-    const raw = process.env['FEATCTRL_HEARTBEAT_WATCHDOG_SECS'];
-    if (raw !== undefined) {
-      const parsed = parseInt(raw, 10);
-      if (isNaN(parsed) || parsed <= 0) {
-        console.warn(
-          `[FeatCtrl] Invalid FEATCTRL_HEARTBEAT_WATCHDOG_SECS value "${raw}", using default: ${DEFAULT_HEARTBEAT_WATCHDOG_SECS}s`,
-        );
-        this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
-      } else {
-        this._watchdogSecs = parsed;
-      }
-    } else {
-      this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
-    }
+    this._watchdogSecs = config.watchdogSecs ?? DEFAULT_HEARTBEAT_WATCHDOG_SECS;
 
     if (config.autoConnect !== false) {
       void this._connect().catch(() => undefined);
