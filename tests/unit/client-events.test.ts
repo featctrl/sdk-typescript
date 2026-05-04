@@ -123,6 +123,61 @@ describe('_handleEvent — flags.snapshot', () => {
 
     expect(disconnectSpy).not.toHaveBeenCalled();
   });
+
+  it('isReady is false before snapshot and true after', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    expect(client.isReady).toBe(false);
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(client.isReady).toBe(true);
+  });
+
+  it('isReady is true inside an onSnapshot listener', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let readyInsideListener = false;
+    client.onSnapshot(() => { readyInsideListener = client.isReady; });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(readyInsideListener).toBe(true);
+  });
+
+  it('ready() resolves after flags.snapshot is handled', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let resolved = false;
+    const p = client.ready().then(() => { resolved = true; });
+    expect(resolved).toBe(false);
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await p;
+    expect(resolved).toBe(true);
+  });
+
+  it('ready() resolves immediately when already ready', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    // Should resolve in the next microtask without any event.
+    await expect(client.ready()).resolves.toBeUndefined();
+  });
+
+  it('multiple ready() calls all resolve when snapshot arrives', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let count = 0;
+    const p1 = client.ready().then(() => { count++; });
+    const p2 = client.ready().then(() => { count++; });
+    const p3 = client.ready().then(() => { count++; });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await Promise.all([p1, p2, p3]);
+    expect(count).toBe(3);
+  });
+
+  it('ready() resolvers are not called again on a second snapshot', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await client.ready(); // drain first snapshot
+    let extraCalls = 0;
+    // Enqueue a new ready() — it should resolve immediately because isReady is true.
+    await client.ready().then(() => { extraCalls++; });
+    // Fire a second snapshot — should NOT enqueue or re-fire anything extra.
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(extraCalls).toBe(1); // resolved once, immediately
+  });
 });
 
 // ── flag.changed ──────────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ export interface FeatCtrlClient {
   onWatchdogTimeout(fn: () => void): FeatCtrlClient;
   onForbidden(fn: () => void): FeatCtrlClient;
   disconnect(): void;
+  readonly isReady: boolean;
+  ready(): Promise<void>;
 }
 
 /**

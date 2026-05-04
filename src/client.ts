@@ -51,6 +51,8 @@ export class SseClient {
   private backoffMs = INITIAL_BACKOFF_MS;
   private disconnecting = false;
   private permanentlyStopped = false;
+  private _isReady = false;
+  private _readyResolvers: Array<() => void> = [];
 
   // ── Listener registries ───────────────────────────────────────────────────
 
@@ -119,6 +121,35 @@ export class SseClient {
   onForbidden(fn: () => void): this {
     this._forbiddenListeners.push(fn);
     return this;
+  }
+
+  // ── Readiness ─────────────────────────────────────────────────────────────
+
+  /**
+   * `true` once the first `flags.snapshot` event has been received.
+   * `false` before the initial snapshot arrives.
+   */
+  get isReady(): boolean {
+    return this._isReady;
+  }
+
+  /**
+   * Returns a `Promise<void>` that resolves as soon as the first
+   * `flags.snapshot` has been received. If the snapshot has already arrived,
+   * the promise resolves immediately (next microtask).
+   *
+   * Safe to call at any point — before or after `autoConnect` fires.
+   *
+   * ```ts
+   * await client.ready();
+   * const enabled = store.isEnabled('my-flag') ?? false;
+   * ```
+   */
+  ready(): Promise<void> {
+    if (this._isReady) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this._readyResolvers.push(resolve);
+    });
   }
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
@@ -280,6 +311,12 @@ export class SseClient {
       case 'flags.snapshot': {
         const parsed = JSON.parse(data) as { flags: FeatCtrlFlag[] };
         const map = new Map<string, FeatCtrlFlag>(parsed.flags.map((f) => [f.key, f]));
+        if (!this._isReady) {
+          this._isReady = true;
+          const resolvers = this._readyResolvers;
+          this._readyResolvers = [];
+          resolvers.forEach((fn) => fn());
+        }
         this._snapshotListeners.forEach((fn) => fn(map));
         if (this._snapshotMode) {
           this.disconnect();
