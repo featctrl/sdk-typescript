@@ -61,6 +61,7 @@ export class SseClient {
   private _snapshotListeners:          Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
   private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
   private _flagKeyListeners:           Map<string, Array<(flag: FeatCtrlFlag) => void>> = new Map();
+  private _flagKeyTokens:              Map<symbol, { key: string; fn: (flag: FeatCtrlFlag) => void }> = new Map();
   private _flagDeletedListeners:       Array<(key: string) => void> = [];
   private _watchdogTimeoutListeners:   Array<() => void> = [];
   private _forbiddenListeners:         Array<() => void> = [];
@@ -105,14 +106,33 @@ export class SseClient {
   /**
    * Register a listener called when the flag with the given key is created or updated.
    * Only fires for that specific key — other flag changes are ignored.
-   * Chainable.
+   *
+   * Returns a unique subscription token. Pass it to `unsubscribe()` to remove
+   * the listener (e.g. in a `useEffect` cleanup).
    */
-  onFlagChange(key: string, fn: (flag: FeatCtrlFlag) => void): this {
+  onFlagChange(key: string, fn: (flag: FeatCtrlFlag) => void): symbol {
     if (!this._flagKeyListeners.has(key)) {
       this._flagKeyListeners.set(key, []);
     }
     this._flagKeyListeners.get(key)!.push(fn);
-    return this;
+    const token = Symbol();
+    this._flagKeyTokens.set(token, { key, fn });
+    return token;
+  }
+
+  /**
+   * Remove a per-flag listener previously registered with `onFlagChange`.
+   * The token returned by `onFlagChange` uniquely identifies the subscription.
+   */
+  unsubscribe(token: symbol): void {
+    const entry = this._flagKeyTokens.get(token);
+    if (!entry) return;
+    this._flagKeyTokens.delete(token);
+    const listeners = this._flagKeyListeners.get(entry.key);
+    if (listeners) {
+      const idx = listeners.indexOf(entry.fn);
+      if (idx !== -1) listeners.splice(idx, 1);
+    }
   }
 
   /** Register a listener called when a flag is deleted. Chainable. */
