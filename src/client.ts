@@ -60,6 +60,7 @@ export class SseClient {
   private _disconnectedListeners:      Array<() => void> = [];
   private _snapshotListeners:          Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
   private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
+  private _flagKeyListeners:           Map<string, Array<(flag: FeatCtrlFlag) => void>> = new Map();
   private _flagDeletedListeners:       Array<(key: string) => void> = [];
   private _watchdogTimeoutListeners:   Array<() => void> = [];
   private _forbiddenListeners:         Array<() => void> = [];
@@ -98,6 +99,19 @@ export class SseClient {
   /** Register a listener called when a flag is created or updated. Chainable. */
   onFlagChanged(fn: (flag: FeatCtrlFlag) => void): this {
     this._flagChangedListeners.push(fn);
+    return this;
+  }
+
+  /**
+   * Register a listener called when the flag with the given key is created or updated.
+   * Only fires for that specific key — other flag changes are ignored.
+   * Chainable.
+   */
+  onFlagChange(key: string, fn: (flag: FeatCtrlFlag) => void): this {
+    if (!this._flagKeyListeners.has(key)) {
+      this._flagKeyListeners.set(key, []);
+    }
+    this._flagKeyListeners.get(key)!.push(fn);
     return this;
   }
 
@@ -327,6 +341,7 @@ export class SseClient {
       case 'flag.changed': {
         const flag = JSON.parse(data) as FeatCtrlFlag;
         this._flagChangedListeners.forEach((fn) => fn(flag));
+        this._flagKeyListeners.get(flag.key)?.forEach((fn) => fn(flag));
         break;
       }
 
