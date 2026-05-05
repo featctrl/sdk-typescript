@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   received. Never resets to `false`.
 - `SseClient.ready()` — returns a `Promise<void>` that resolves as soon as the first snapshot
   arrives, or resolves immediately (next microtask) if the snapshot has already been received.
-- `SseClient.onFlagChange(key, fn)` — per-flag subscription that fires only when the specific
+- `SseClient.onFlagChanged(key, fn)` — per-flag subscription that fires only when the specific
   flag key is created or updated. Returns a unique `symbol` subscription token.
-- `SseClient.unsubscribe(token)` — removes a listener previously registered with `onFlagChange`.
+- `SseClient.unsubscribe(token)` — removes a listener previously registered with `onFlagChanged`.
   Designed for use in framework cleanup callbacks (e.g. `useEffect` teardown).
 
 ## [0.1.3] - 2026-04-29
