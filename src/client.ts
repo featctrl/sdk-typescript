@@ -18,6 +18,11 @@ interface SseClientConfig {
    * @default true
    */
   autoConnect?: boolean;
+  /**
+   * Number of seconds to wait for a heartbeat before assuming the connection
+   * has stalled and reconnecting. @default 120
+   */
+  watchdogSecs?: number;
 }
 
 const DEFAULT_SDK_API_URL = 'https://sdk.featctrl.com';
@@ -46,6 +51,8 @@ export class SseClient {
   private backoffMs = INITIAL_BACKOFF_MS;
   private disconnecting = false;
   private permanentlyStopped = false;
+  private _isReady = false;
+  private _readyResolvers: Array<() => void> = [];
 
   // ── Listener registries ───────────────────────────────────────────────────
 
@@ -53,6 +60,8 @@ export class SseClient {
   private _disconnectedListeners:      Array<() => void> = [];
   private _snapshotListeners:          Array<(flags: Map<string, FeatCtrlFlag>) => void> = [];
   private _flagChangedListeners:       Array<(flag: FeatCtrlFlag) => void> = [];
+  private _flagKeyListeners:           Map<string, Array<(flag: FeatCtrlFlag) => void>> = new Map();
+  private _flagKeyTokens:              Map<symbol, { key: string; fn: (flag: FeatCtrlFlag) => void }> = new Map();
   private _flagDeletedListeners:       Array<(key: string) => void> = [];
   private _watchdogTimeoutListeners:   Array<() => void> = [];
   private _forbiddenListeners:         Array<() => void> = [];
@@ -61,21 +70,7 @@ export class SseClient {
     this.sdkApiUrl = config.sdkApiUrl?.replace(/\/$/, '') ?? DEFAULT_SDK_API_URL;
     this.sdkKey = config.sdkKey;
     this._snapshotMode = config.snapshotMode ?? false;
-
-    const raw = process.env['FEATCTRL_HEARTBEAT_WATCHDOG_SECS'];
-    if (raw !== undefined) {
-      const parsed = parseInt(raw, 10);
-      if (isNaN(parsed) || parsed <= 0) {
-        console.warn(
-          `[FeatCtrl] Invalid FEATCTRL_HEARTBEAT_WATCHDOG_SECS value "${raw}", using default: ${DEFAULT_HEARTBEAT_WATCHDOG_SECS}s`,
-        );
-        this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
-      } else {
-        this._watchdogSecs = parsed;
-      }
-    } else {
-      this._watchdogSecs = DEFAULT_HEARTBEAT_WATCHDOG_SECS;
-    }
+    this._watchdogSecs = config.watchdogSecs ?? DEFAULT_HEARTBEAT_WATCHDOG_SECS;
 
     if (config.autoConnect !== false) {
       void this._connect().catch(() => undefined);
@@ -102,10 +97,44 @@ export class SseClient {
     return this;
   }
 
-  /** Register a listener called when a flag is created or updated. Chainable. */
-  onFlagChanged(fn: (flag: FeatCtrlFlag) => void): this {
-    this._flagChangedListeners.push(fn);
+  /** Register a listener called when any flag is created or updated. Chainable. */
+  onFlagChanged(fn: (flag: FeatCtrlFlag) => void): this;
+  /**
+   * Register a listener scoped to a single flag key.
+   * Only fires for that specific key — other flag changes are ignored.
+   *
+   * Returns a unique subscription token. Pass it to `unsubscribe()` to remove
+   * the listener (e.g. in a `useEffect` cleanup).
+   */
+  onFlagChanged(key: string, fn: (flag: FeatCtrlFlag) => void): symbol;
+  onFlagChanged(keyOrFn: string | ((flag: FeatCtrlFlag) => void), fn?: (flag: FeatCtrlFlag) => void): this | symbol {
+    if (typeof keyOrFn === 'string') {
+      const key = keyOrFn;
+      if (!this._flagKeyListeners.has(key)) {
+        this._flagKeyListeners.set(key, []);
+      }
+      this._flagKeyListeners.get(key)!.push(fn!);
+      const token = Symbol();
+      this._flagKeyTokens.set(token, { key, fn: fn! });
+      return token;
+    }
+    this._flagChangedListeners.push(keyOrFn);
     return this;
+  }
+
+  /**
+   * Remove a per-flag listener previously registered with `onFlagChanged(key, fn)`.
+   * The token returned by `onFlagChanged` uniquely identifies the subscription.
+   */
+  unsubscribe(token: symbol): void {
+    const entry = this._flagKeyTokens.get(token);
+    if (!entry) return;
+    this._flagKeyTokens.delete(token);
+    const listeners = this._flagKeyListeners.get(entry.key);
+    if (listeners) {
+      const idx = listeners.indexOf(entry.fn);
+      if (idx !== -1) listeners.splice(idx, 1);
+    }
   }
 
   /** Register a listener called when a flag is deleted. Chainable. */
@@ -128,6 +157,35 @@ export class SseClient {
   onForbidden(fn: () => void): this {
     this._forbiddenListeners.push(fn);
     return this;
+  }
+
+  // ── Readiness ─────────────────────────────────────────────────────────────
+
+  /**
+   * `true` once the first `flags.snapshot` event has been received.
+   * `false` before the initial snapshot arrives.
+   */
+  get isReady(): boolean {
+    return this._isReady;
+  }
+
+  /**
+   * Returns a `Promise<void>` that resolves as soon as the first
+   * `flags.snapshot` has been received. If the snapshot has already arrived,
+   * the promise resolves immediately (next microtask).
+   *
+   * Safe to call at any point — before or after `autoConnect` fires.
+   *
+   * ```ts
+   * await client.ready();
+   * const enabled = store.isEnabled('my-flag') ?? false;
+   * ```
+   */
+  ready(): Promise<void> {
+    if (this._isReady) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this._readyResolvers.push(resolve);
+    });
   }
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
@@ -289,6 +347,12 @@ export class SseClient {
       case 'flags.snapshot': {
         const parsed = JSON.parse(data) as { flags: FeatCtrlFlag[] };
         const map = new Map<string, FeatCtrlFlag>(parsed.flags.map((f) => [f.key, f]));
+        if (!this._isReady) {
+          this._isReady = true;
+          const resolvers = this._readyResolvers;
+          this._readyResolvers = [];
+          resolvers.forEach((fn) => fn());
+        }
         this._snapshotListeners.forEach((fn) => fn(map));
         if (this._snapshotMode) {
           this.disconnect();
@@ -299,6 +363,7 @@ export class SseClient {
       case 'flag.changed': {
         const flag = JSON.parse(data) as FeatCtrlFlag;
         this._flagChangedListeners.forEach((fn) => fn(flag));
+        this._flagKeyListeners.get(flag.key)?.forEach((fn) => fn(flag));
         break;
       }
 

@@ -7,13 +7,17 @@ Based on the common specifications [FeatCtrl SDK Specifications](https://github.
 
 Server-side TypeScript SDK for [FeatCtrl](https://www.featctrl.com) — feature flag management.
 
-This package provides a **Node.js SSE client** that connects to `https://sdk.featctrl.com` and keeps an in-memory
+This package provides an **SSE client** that connects to `https://sdk.featctrl.com` and keeps an in-memory
 flag store up to date in real time. It is framework-agnostic: use it standalone in any Node.js
-process, or pair it with other `@featctrl/*` plugins to expose flags to a TypeScript based application.
+process, pair it with other `@featctrl/*` plugins, or use it directly in the browser via the
+`@featctrl/typescript/browser` entry point.
 
-> **Important** — this package is designed for **Node.js server-side code only**.
-> It uses the native Node.js 22+ `fetch` API with streaming and does **not** use
-> the browser-only `EventSource` API. The SDK key must never be exposed to the browser.
+> **Node.js entry point** (`@featctrl/typescript`) — auto-starts from environment variables,
+> loads `.env` files, and provides ready-to-use `flagStore` / `sseClient` singletons. Requires **Node.js ≥ 22**.
+>
+> **Browser entry point** (`@featctrl/typescript/browser`) — exports `SseClient` and `FlagStore`
+> as plain classes with zero Node.js dependencies. You instantiate them yourself and supply the SDK key
+> explicitly. **Never expose your SDK key in client-side code unless it is intended to be public.**
 
 ---
 
@@ -100,6 +104,36 @@ sseClient
 process.on('SIGTERM', () => sseClient?.disconnect());
 ```
 
+### Waiting for the first snapshot
+
+`SseClient` exposes two readiness APIs:
+
+| API | Type | Description |
+|---|---|---|
+| `client.isReady` | `boolean` | `true` once the first `flags.snapshot` has been received. Never resets to `false`. |
+| `client.ready()` | `Promise<void>` | Resolves as soon as the first snapshot arrives. Resolves immediately (next microtask) if already ready. |
+
+**`await` pattern** — useful at application startup to block until flags are available:
+
+```typescript
+import { sseClient, flagStore } from '@featctrl/typescript';
+
+await sseClient?.ready();
+// flagStore is now populated with the initial snapshot
+const enabled = flagStore.isEnabled('new-checkout') ?? false;
+```
+
+**Boolean guard** — useful for synchronous checks deeper in your code:
+
+```typescript
+if (sseClient?.isReady) {
+  // flags are available right now
+}
+```
+
+> `ready()` is safe to call before auto-connect fires. It simply waits for the first
+> `flags.snapshot` event regardless of when the connection is established.
+
 ---
 
 ## API reference
@@ -128,6 +162,8 @@ Always available, even when `FEATCTRL_SDK_KEY` is not set (returns safe defaults
 | `onWatchdogTimeout` | `(fn: () => void) => this`                                     | Heartbeat watchdog expired — the client is reconnecting                                  |
 | `onForbidden`       | `(fn: () => void) => this`                                     | Server returned 403 — SDK key rejected, retries permanently disabled                     |
 | `disconnect`        | `() => void`                                                   | Abort the connection and notify the backend                                              |
+| `isReady`           | `boolean` (getter)                                             | `true` once the first flag snapshot has been received                                    |
+| `ready`             | `() => Promise<void>`                                          | Resolves when the first snapshot arrives; resolves immediately if already ready          |
 
 ### `FeatCtrlFlag`
 

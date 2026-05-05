@@ -51,7 +51,20 @@ export function createDefaultClient(
 
   console.log(`[FeatCtrl] Running in ${mode} mode.`);
 
-  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot', autoConnect });
+  const rawWatchdog = env.FEATCTRL_HEARTBEAT_WATCHDOG_SECS?.trim();
+  let watchdogSecs: number | undefined;
+  if (rawWatchdog !== undefined) {
+    const parsed = parseInt(rawWatchdog, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      console.warn(
+        `[FeatCtrl] Invalid FEATCTRL_HEARTBEAT_WATCHDOG_SECS value "${rawWatchdog}", using default: 120s`,
+      );
+    } else {
+      watchdogSecs = parsed;
+    }
+  }
+
+  const sseClient = new SseClient({ sdkApiUrl, sdkKey, snapshotMode: mode === 'snapshot', autoConnect, watchdogSecs });
   sseClient.onSnapshot((flags) => flagStore.setSnapshot(flags));
 
   if (mode === 'livestreaming') {

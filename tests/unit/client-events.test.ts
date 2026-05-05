@@ -123,6 +123,61 @@ describe('_handleEvent — flags.snapshot', () => {
 
     expect(disconnectSpy).not.toHaveBeenCalled();
   });
+
+  it('isReady is false before snapshot and true after', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    expect(client.isReady).toBe(false);
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(client.isReady).toBe(true);
+  });
+
+  it('isReady is true inside an onSnapshot listener', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let readyInsideListener = false;
+    client.onSnapshot(() => { readyInsideListener = client.isReady; });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(readyInsideListener).toBe(true);
+  });
+
+  it('ready() resolves after flags.snapshot is handled', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let resolved = false;
+    const p = client.ready().then(() => { resolved = true; });
+    expect(resolved).toBe(false);
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await p;
+    expect(resolved).toBe(true);
+  });
+
+  it('ready() resolves immediately when already ready', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    // Should resolve in the next microtask without any event.
+    await expect(client.ready()).resolves.toBeUndefined();
+  });
+
+  it('multiple ready() calls all resolve when snapshot arrives', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let count = 0;
+    const p1 = client.ready().then(() => { count++; });
+    const p2 = client.ready().then(() => { count++; });
+    const p3 = client.ready().then(() => { count++; });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await Promise.all([p1, p2, p3]);
+    expect(count).toBe(3);
+  });
+
+  it('ready() resolvers are not called again on a second snapshot', async () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    await client.ready(); // drain first snapshot
+    let extraCalls = 0;
+    // Enqueue a new ready() — it should resolve immediately because isReady is true.
+    await client.ready().then(() => { extraCalls++; });
+    // Fire a second snapshot — should NOT enqueue or re-fire anything extra.
+    handleEvent(client, 'flags.snapshot', JSON.stringify({ flags: [] }));
+    expect(extraCalls).toBe(1); // resolved once, immediately
+  });
 });
 
 // ── flag.changed ──────────────────────────────────────────────────────────────
@@ -148,6 +203,60 @@ describe('_handleEvent — flag.changed', () => {
     handleEvent(client, 'flag.changed', JSON.stringify(flag));
 
     expect(store.isEnabled('rollout')).toBe(true);
+  });
+
+  it('onFlagChanged fires when flag.changed is received for the subscribed key', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let received: FeatCtrlFlag | null = null;
+    client.onFlagChanged('key-a', (f) => { received = f; });
+
+    const flag: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
+    handleEvent(client, 'flag.changed', JSON.stringify(flag));
+
+    expect(received).toEqual(flag);
+  });
+
+  it('onFlagChanged does not fire when flag.changed is received for a different key', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let called = false;
+    client.onFlagChanged('key-a', () => { called = true; });
+
+    const flag: FeatCtrlFlag = { key: 'key-b', name: 'Key B', flag_type: 'boolean', enabled: true, config: null };
+    handleEvent(client, 'flag.changed', JSON.stringify(flag));
+
+    expect(called).toBe(false);
+  });
+
+  it('multiple onFlagChanged listeners for the same key all fire', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    let count = 0;
+    client.onFlagChanged('key-a', () => { count++; });
+    client.onFlagChanged('key-a', () => { count++; });
+
+    const flag: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
+    handleEvent(client, 'flag.changed', JSON.stringify(flag));
+
+    expect(count).toBe(2);
+  });
+
+  it('onFlagChanged (global) still fires for all keys regardless of onFlagChanged(key) registrations', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    const globalReceived: string[] = [];
+    client.onFlagChanged((f) => { globalReceived.push(f.key); });
+    client.onFlagChanged('key-a', () => { /* key-scoped listener */ });
+
+    const flagA: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
+    const flagB: FeatCtrlFlag = { key: 'key-b', name: 'Key B', flag_type: 'boolean', enabled: false, config: null };
+    handleEvent(client, 'flag.changed', JSON.stringify(flagA));
+    handleEvent(client, 'flag.changed', JSON.stringify(flagB));
+
+    expect(globalReceived).toEqual(['key-a', 'key-b']);
+  });
+
+  it('onFlagChanged(key, fn) returns a symbol token', () => {
+    const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
+    const token = client.onFlagChanged('key-a', () => {});
+    expect(typeof token).toBe('symbol');
   });
 });
 
