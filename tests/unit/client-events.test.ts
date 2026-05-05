@@ -205,10 +205,10 @@ describe('_handleEvent — flag.changed', () => {
     expect(store.isEnabled('rollout')).toBe(true);
   });
 
-  it('onFlagChange fires when flag.changed is received for the subscribed key', () => {
+  it('onFlagChanged fires when flag.changed is received for the subscribed key', () => {
     const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
     let received: FeatCtrlFlag | null = null;
-    client.onFlagChange('key-a', (f) => { received = f; });
+    client.onFlagChanged('key-a', (f) => { received = f; });
 
     const flag: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
     handleEvent(client, 'flag.changed', JSON.stringify(flag));
@@ -216,10 +216,10 @@ describe('_handleEvent — flag.changed', () => {
     expect(received).toEqual(flag);
   });
 
-  it('onFlagChange does not fire when flag.changed is received for a different key', () => {
+  it('onFlagChanged does not fire when flag.changed is received for a different key', () => {
     const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
     let called = false;
-    client.onFlagChange('key-a', () => { called = true; });
+    client.onFlagChanged('key-a', () => { called = true; });
 
     const flag: FeatCtrlFlag = { key: 'key-b', name: 'Key B', flag_type: 'boolean', enabled: true, config: null };
     handleEvent(client, 'flag.changed', JSON.stringify(flag));
@@ -227,11 +227,11 @@ describe('_handleEvent — flag.changed', () => {
     expect(called).toBe(false);
   });
 
-  it('multiple onFlagChange listeners for the same key all fire', () => {
+  it('multiple onFlagChanged listeners for the same key all fire', () => {
     const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
     let count = 0;
-    client.onFlagChange('key-a', () => { count++; });
-    client.onFlagChange('key-a', () => { count++; });
+    client.onFlagChanged('key-a', () => { count++; });
+    client.onFlagChanged('key-a', () => { count++; });
 
     const flag: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
     handleEvent(client, 'flag.changed', JSON.stringify(flag));
@@ -239,11 +239,11 @@ describe('_handleEvent — flag.changed', () => {
     expect(count).toBe(2);
   });
 
-  it('onFlagChanged (global) still fires for all keys regardless of onFlagChange registrations', () => {
+  it('onFlagChanged (global) still fires for all keys regardless of onFlagChanged(key) registrations', () => {
     const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
     const globalReceived: string[] = [];
     client.onFlagChanged((f) => { globalReceived.push(f.key); });
-    client.onFlagChange('key-a', () => { /* key-scoped listener */ });
+    client.onFlagChanged('key-a', () => { /* key-scoped listener */ });
 
     const flagA: FeatCtrlFlag = { key: 'key-a', name: 'Key A', flag_type: 'boolean', enabled: true, config: null };
     const flagB: FeatCtrlFlag = { key: 'key-b', name: 'Key B', flag_type: 'boolean', enabled: false, config: null };
@@ -253,10 +253,10 @@ describe('_handleEvent — flag.changed', () => {
     expect(globalReceived).toEqual(['key-a', 'key-b']);
   });
 
-  it('onFlagChange is chainable', () => {
+  it('onFlagChanged(key, fn) returns a symbol token', () => {
     const client = new SseClient({ sdkKey: 'sk_test', autoConnect: false });
-    const result = client.onFlagChange('key-a', () => {});
-    expect(result).toBe(client);
+    const token = client.onFlagChanged('key-a', () => {});
+    expect(typeof token).toBe('symbol');
   });
 });
 

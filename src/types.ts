@@ -18,7 +18,7 @@ export interface FeatCtrlClient {
   onDisconnected(fn: () => void): FeatCtrlClient;
   onSnapshot(fn: (flags: Map<string, FeatCtrlFlag>) => void): FeatCtrlClient;
   onFlagChanged(fn: (flag: FeatCtrlFlag) => void): FeatCtrlClient;
-  onFlagChange(key: string, fn: (flag: FeatCtrlFlag) => void): symbol;
+  onFlagChanged(key: string, fn: (flag: FeatCtrlFlag) => void): symbol;
   unsubscribe(token: symbol): void;
   onFlagDeleted(fn: (key: string) => void): FeatCtrlClient;
   onWatchdogTimeout(fn: () => void): FeatCtrlClient;

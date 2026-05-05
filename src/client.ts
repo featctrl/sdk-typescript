@@ -97,32 +97,34 @@ export class SseClient {
     return this;
   }
 
-  /** Register a listener called when a flag is created or updated. Chainable. */
-  onFlagChanged(fn: (flag: FeatCtrlFlag) => void): this {
-    this._flagChangedListeners.push(fn);
-    return this;
-  }
-
+  /** Register a listener called when any flag is created or updated. Chainable. */
+  onFlagChanged(fn: (flag: FeatCtrlFlag) => void): this;
   /**
-   * Register a listener called when the flag with the given key is created or updated.
+   * Register a listener scoped to a single flag key.
    * Only fires for that specific key — other flag changes are ignored.
    *
    * Returns a unique subscription token. Pass it to `unsubscribe()` to remove
    * the listener (e.g. in a `useEffect` cleanup).
    */
-  onFlagChange(key: string, fn: (flag: FeatCtrlFlag) => void): symbol {
-    if (!this._flagKeyListeners.has(key)) {
-      this._flagKeyListeners.set(key, []);
+  onFlagChanged(key: string, fn: (flag: FeatCtrlFlag) => void): symbol;
+  onFlagChanged(keyOrFn: string | ((flag: FeatCtrlFlag) => void), fn?: (flag: FeatCtrlFlag) => void): this | symbol {
+    if (typeof keyOrFn === 'string') {
+      const key = keyOrFn;
+      if (!this._flagKeyListeners.has(key)) {
+        this._flagKeyListeners.set(key, []);
+      }
+      this._flagKeyListeners.get(key)!.push(fn!);
+      const token = Symbol();
+      this._flagKeyTokens.set(token, { key, fn: fn! });
+      return token;
     }
-    this._flagKeyListeners.get(key)!.push(fn);
-    const token = Symbol();
-    this._flagKeyTokens.set(token, { key, fn });
-    return token;
+    this._flagChangedListeners.push(keyOrFn);
+    return this;
   }
 
   /**
-   * Remove a per-flag listener previously registered with `onFlagChange`.
-   * The token returned by `onFlagChange` uniquely identifies the subscription.
+   * Remove a per-flag listener previously registered with `onFlagChanged(key, fn)`.
+   * The token returned by `onFlagChanged` uniquely identifies the subscription.
    */
   unsubscribe(token: symbol): void {
     const entry = this._flagKeyTokens.get(token);
